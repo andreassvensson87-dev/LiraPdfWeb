@@ -197,6 +197,9 @@ export function validateProject(p) {
       (!Number.isFinite(e.denominator) ||
         e.denominator < 1 ||
         e.denominator > 100000 ||
+        (e.name !== undefined &&
+          (typeof e.name !== "string" || e.name.length > 100)) ||
+        (e.showLabel !== undefined && typeof e.showLabel !== "boolean") ||
         box(...e.points).w < 1 ||
         box(...e.points).h < 1)
     )

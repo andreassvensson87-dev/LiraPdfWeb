@@ -180,3 +180,56 @@ test("PDF export uses viewport scale for dimensions and omits frame", async () =
   // Dimension produces seven strokes; the four-sided editor frame adds none.
   assert.equal(content.split("\n").filter((s) => s === "S").length, 7);
 });
+
+test("viewport frame scales around top left and reverses without changing paper", () => {
+  const next = changeViewportScale(state, "v", 50);
+  assert.deepEqual(next.entities[0].points, [
+    { x: 20, y: 30 },
+    { x: 480, y: 430 },
+  ]);
+  assert.deepEqual(changeViewportScale(next, "v", 100), state);
+});
+
+test("viewport caption follows frame and includes edited name and scale", async () => {
+  const { viewportCaption } = await import("../src/viewports.js");
+  const named = { ...frame, name: "Plan 1", showLabel: true };
+  const changed = changeViewportScale({ ...state, entities: [named] }, "v", 50)
+    .entities[0];
+  assert.deepEqual(viewportCaption(changed), {
+    kind: "text",
+    p: { x: 20, y: 446 },
+    size: 10,
+    value: "Plan 1 · Skala 1:50",
+  });
+  const { PDFDocument, PDFRawStream, decodePDFRawStream } =
+    await import("pdf-lib");
+  const { exportPdf } = await import("../src/export.js");
+  const doc = await PDFDocument.create();
+  doc.addPage([600, 800]);
+  const source = {
+    getPage: async () => ({
+      rotate: 0,
+      getViewport: () => ({ convertToPdfPoint: (x, y) => [x, 800 - y] }),
+    }),
+  };
+  const result = await PDFDocument.load(
+    await exportPdf(await doc.save(), [changed], {}, source),
+  );
+  const content = result
+    .getPage(0)
+    .node.Contents()
+    .asArray()
+    .map((ref) =>
+      Buffer.from(
+        decodePDFRawStream(result.context.lookup(ref, PDFRawStream)).decode(),
+      ).toString("latin1"),
+    )
+    .join("");
+  assert.ok(
+    content.includes(
+      Buffer.from("Plan 1 · Skala 1:50", "latin1")
+        .toString("hex")
+        .toUpperCase(),
+    ),
+  );
+});

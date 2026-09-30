@@ -1025,3 +1025,26 @@ dialog input {
   color: #527261;
   border-radius: 3px;
 }
+
+#viewportControls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+#viewportName {
+  width: 130px;
+}
+#viewportLabel {
+  width: auto;
+}
+#newPdfForm > label {
+  display: grid;
+  gap: 5px;
+  margin: 16px 0;
+}
+#newPdfForm select {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: white;
+}

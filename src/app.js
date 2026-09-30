@@ -1,4 +1,5 @@
 import "./style.css";
+import { blankPdf } from "./blank-pdf.js";
 import {
   polarPoint,
   trackingPoint,
@@ -19,6 +20,7 @@ function clearTracking() {
   clearTimeout(trackTimer);
 }
 import {
+  viewportCaption,
   viewportAt,
   entityScale,
   changeViewportScale,
@@ -432,7 +434,22 @@ function drawEntity(e, preview = false) {
       },
       g,
     );
-    label.textContent = `Viewport 1:${e.denominator || "…"}`;
+    label.textContent = `${e.name || "Viewport"} 1:${e.denominator || "…"}`;
+    if (e.showLabel) {
+      const caption = viewportCaption(e);
+      const text = svg(
+        "text",
+        {
+          x: caption.p.x,
+          y: caption.p.y,
+          fill: "#263b35",
+          "font-size": caption.size,
+          "font-family": "Helvetica, Arial, sans-serif",
+        },
+        g,
+      );
+      text.textContent = caption.value;
+    }
   }
   if (e.type === "block") {
     const a = e.points[0];
@@ -665,8 +682,11 @@ function refresh() {
     !(activeType === "mask" && !current()) &&
     !["extract", "coverLine", "eraseLine"].includes(activeType);
   $("viewportControls").hidden = current()?.type !== "viewport";
-  if (current()?.type === "viewport")
+  if (current()?.type === "viewport") {
     $("viewportScale").value = current().denominator;
+    $("viewportName").value = current().name || "Viewport";
+    $("viewportLabel").checked = !!current().showLabel;
+  }
   $("blockControls").hidden = current()?.type !== "block";
   if (current()?.type === "block") {
     $("blockSize").value = (
@@ -1200,6 +1220,8 @@ async function addPoint(p) {
           { x: r.x + r.w, y: r.y + r.h },
         ],
         denominator,
+        name: `Vy ${state.entities.filter((e) => e.type === "viewport").length + 1}`,
+        showLabel: true,
         ...style(),
       };
       const next = clone(state);
@@ -1716,6 +1738,39 @@ for (const id of ["blockSize", "blockRotation"])
     } else block.rotation = ((value % 360) + 360) % 360;
     commit(next);
   };
+for (const id of ["viewportName", "viewportLabel"])
+  $(id).onchange = () => {
+    if (busy || pendingDialog || current()?.type !== "viewport") return;
+    const next = clone(state),
+      e = next.entities.find((e) => e.id === selected);
+    e.name = $("viewportName").value.trim().slice(0, 100) || "Viewport";
+    e.showLabel = $("viewportLabel").checked;
+    commit(next);
+  };
+$("newPdf").onclick = () => {
+  if (busy || pendingDialog) return;
+  $("newPdfDialog").showModal();
+};
+$("newPdfForm").onsubmit = async (event) => {
+  event.preventDefault();
+  $("newPdfDialog").close();
+  try {
+    const data = await blankPdf(
+      $("paperSize").value,
+      $("paperOrientation").value === "landscape",
+    );
+    const filename =
+      ($("newPdfName").value.trim() || "Ny ritning").replace(/\.pdf$/i, "") +
+      ".pdf";
+    await openDocument(data, filename, {
+      entities: [],
+      scales: { 1: mmPerPoint },
+    });
+  } catch (e) {
+    error(e);
+  }
+};
+$("cancelNewPdf").onclick = () => $("newPdfDialog").close();
 $("viewportScale").onchange = () => {
   if (busy || pendingDialog || current()?.type !== "viewport") return;
   try {
@@ -1908,7 +1963,7 @@ window.addEventListener("keydown", (ev) => {
     refresh();
     return;
   }
-  if (typing || pendingDialog) return;
+  if (typing || pendingDialog || $("newPdfDialog").open) return;
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "z") {
     ev.preventDefault();
     history(ev.shiftKey);

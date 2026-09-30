@@ -119,6 +119,10 @@ Under **Mått → Viewport** (`VP`) väljer du två hörn och en skala. Ange exe
 
 En linje på `5000` mm blir 50 mm på pappret vid 1:100. Markera ramens kant och ändra **Viewport 1:** till `50`: linjen blir 100 mm på pappret, medan måttsättningen fortfarande visar 5000 mm. Samma princip gäller cirklar, bågar och övrig tillhörande geometri. Tillhörigheten behålls om objekt flyttas utanför ramen. Kommandoraden visar aktuell skala.
 
-Skalbyte sker kring ramens övre vänstra hörn; ramen behåller sin storlek. Flytt av hela ramen flyttar även dess objekt; hörngreppen ändrar själva rutans utsträckning. Linjebredder och textstorlekar behåller sin pappersstorlek. Ramen är endast arbetsstöd och skrivs inte ut i PDF-export. PDF-underlag, maskningar och direktredigering av PDF-innehållet följer pappret. Ta bort en viewport tar även bort dess objekt; Ångra återställer allt.
+Skalbyte sker kring ramens övre vänstra hörn; både ramen och dess objekt ändrar storlek. Flytt av hela ramen flyttar även dess objekt; hörngreppen ändrar själva rutans utsträckning. Linjebredder och textstorlekar behåller sin pappersstorlek. Ramens streckade kant är arbetsstöd och skrivs inte ut. Markera ramen för att ange namn och välja **Visa namn och skala på PDF**. Texten placeras under ramen och följer med i exporten. Nya viewports visar texten som standard; befintliga kan aktiveras med kryssrutan. PDF-underlag, maskningar och direktredigering av PDF-innehållet följer pappret. Ta bort en viewport tar även bort dess objekt; Ångra återställer allt.
 
 Viewportskala, objekt och tillhörighet sparas i projektfilen och i autosparandet. Exporterade mått använder samma skala som visningen.
+
+## Ny PDF
+
+**Arkiv → Ny PDF** skapar ett tomt dokument i en ny flik. Välj namn, A0–A4 och liggande eller stående orientering. Pappret börjar i skala 1:1. Du kan rita direkt, kalibrera pappret eller lägga in viewports med egna skalor. Mallar med ramar och rithuvuden är ännu inte implementerade.

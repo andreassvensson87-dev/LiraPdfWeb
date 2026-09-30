@@ -51,6 +51,21 @@ export function changeViewportScale(state, id, denominator) {
   if (!v) throw Error("Välj en viewport först.");
   const r = box(...v.points);
   transformChildren(next, id, { x: r.x, y: r.y }, v.denominator / denominator);
+  const factor = v.denominator / denominator;
+  v.points = v.points.map((p) => ({
+    x: r.x + (p.x - r.x) * factor,
+    y: r.y + (p.y - r.y) * factor,
+  }));
   v.denominator = denominator;
   return next;
+}
+
+export function viewportCaption(e) {
+  const r = box(...e.points);
+  return {
+    kind: "text",
+    p: { x: r.x, y: r.y + r.h + 16 },
+    size: 10,
+    value: `${e.name || "Viewport"} · Skala 1:${e.denominator}`,
+  };
 }

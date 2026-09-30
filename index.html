@@ -13,6 +13,7 @@
       <details id="fileMenu" class="file-menu">
         <summary>Arkiv <span>⌄</span></summary>
         <div class="menu-panel">
+          <button id="newPdf">Ny PDF…</button>
           <button id="open">Öppna PDF…</button
           ><button id="projectOpen">Öppna projekt…</button>
           <hr />
@@ -140,6 +141,14 @@
       </div>
       <div id="viewportControls" hidden>
         <label
+          >Namn
+          <input id="viewportName" aria-label="Viewportnamn" maxlength="100"
+        /></label>
+        <label
+          ><input type="checkbox" id="viewportLabel" /> Visa namn och skala på
+          PDF</label
+        >
+        <label
           >Viewport 1:<input
             id="viewportScale"
             aria-label="Viewportskala"
@@ -265,6 +274,35 @@
       accept=".lirapdf,application/json"
     />
     <input id="blockInput" type="file" accept="application/pdf,.pdf" hidden />
+    <dialog id="newPdfDialog" aria-labelledby="newPdfTitle">
+      <form id="newPdfForm">
+        <div class="paneltitle" id="newPdfTitle">Ny PDF</div>
+        <label
+          >Namn <input id="newPdfName" value="Ny ritning" maxlength="100"
+        /></label>
+        <label
+          >Pappersstorlek
+          <select id="paperSize">
+            <option>A4</option>
+            <option selected>A3</option>
+            <option>A2</option>
+            <option>A1</option>
+            <option>A0</option>
+          </select></label
+        >
+        <label
+          >Orientering
+          <select id="paperOrientation">
+            <option value="landscape">Liggande</option>
+            <option value="portrait">Stående</option>
+          </select></label
+        >
+        <div class="dialogactions">
+          <button type="button" id="cancelNewPdf">Avbryt</button
+          ><button class="primary" type="submit">Skapa PDF</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="dialog">
       <form method="dialog">
         <div class="paneltitle" id="dialogTitle">Text</div>
