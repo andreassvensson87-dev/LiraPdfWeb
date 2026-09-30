@@ -1,3 +1,10 @@
+import {
+  editableTypes,
+  offsetTypes,
+  translateEntity,
+  offsetEntity,
+} from "./editing.js";
+let editOperation = null;
 import "./style.css";
 import { blankPdf } from "./blank-pdf.js";
 import {
@@ -62,12 +69,18 @@ const tools = [
   ["leader", "↗", "Leader", "LE"],
   ["viewport", "", "Viewport", "VP"],
   ["dim", "↔", "Mått", "DIM"],
+  ["move", "", "Flytta", "M"],
+  ["copy", "", "Kopiera", "CO"],
+  ["offset", "", "Offset", "O"],
   ["mask", "▧", "Maska", "MASK"],
   ["extract", "", "Hämta linje", "GETLINE"],
   ["coverLine", "", "Täck linje", "COVERLINE"],
   ["eraseLine", "", "Ta bort PDF-linje", "ERASELINE"],
 ];
 const toolCategories = {
+  move: "edit",
+  copy: "edit",
+  offset: "edit",
   block: "create",
   line: "create",
   circle: "create",
@@ -246,6 +259,8 @@ function history(redo = false) {
   clearTracking();
   to.push(clone(state));
   state = from.pop();
+  editOperation = null;
+  tool = "select";
   if (before !== removalKey(state)) showPage(pageNo, true);
   selected = null;
   points = [];
@@ -280,6 +295,20 @@ $("dialog").addEventListener("close", () => {
 });
 function setTool(t) {
   if (busy || !pdf) return;
+  const previous = current();
+  editOperation = ["move", "copy", "offset"].includes(t)
+    ? {
+        ids:
+          previous &&
+          (t === "offset" ? offsetTypes : editableTypes).includes(previous.type)
+            ? [previous.id]
+            : [],
+        phase: "select",
+        amount: null,
+      }
+    : null;
+  if (editOperation?.ids.length)
+    editOperation.phase = t === "offset" ? "distance" : "base";
   clearTracking();
   if (drag?.kind === "entity") state = drag.before;
   drag = null;
@@ -297,6 +326,9 @@ for (const [id, icon, label, shortcut] of tools) {
   b.dataset.tool = id;
   b.title = `${label} (${shortcut})`;
   const paths = {
+    move: '<path d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4"/>',
+    copy: '<rect x="8" y="8" width="12" height="12"/><path d="M5 16H3V3h13v2"/>',
+    offset: '<path d="M3 20V4h16M8 20V9h11M13 20v-6h6"/>',
     block:
       '<rect x="4" y="3" width="13" height="17"/><path d="M9 12h12m-6-6v12"/>',
     viewport:
@@ -376,7 +408,16 @@ function prompt() {
     : context.scale
       ? `Papper 1:${Number((context.scale / mmPerPoint).toFixed(2))}`
       : "Papper · ej kalibrerat";
-  const next = `${steps[tool]?.[points.length] || "Välj punkt"} · ${scaleText}`;
+  const editPrompt =
+    editOperation &&
+    {
+      select: `Välj objekt (${editOperation.ids.length}) · Enter fortsätter`,
+      base: "Ange baspunkt",
+      target: "Ange målpunkt eller skriv avstånd i mm",
+      distance: "Ange offsetavstånd i mm",
+      side: "Klicka på önskad sida · Esc avslutar",
+    }[editOperation.phase];
+  const next = `${editPrompt || steps[tool]?.[points.length] || "Välj punkt"} · ${scaleText}`;
   if ($("prompt").textContent !== next) {
     $("prompt").textContent = next;
   }
@@ -393,7 +434,8 @@ function drawEntity(e, preview = false) {
     class: "entity",
     opacity: preview ? 0.55 : 1,
   });
-  const isSelected = e.id === selected;
+  const isSelected =
+    !preview && (e.id === selected || editOperation?.ids.includes(e.id));
   if (e.type === "viewport") {
     const r = box(...e.points);
     svg(
@@ -424,17 +466,6 @@ function drawEntity(e, preview = false) {
       },
       g,
     );
-    const label = svg(
-      "text",
-      {
-        x: r.x + 5 / zoom,
-        y: r.y - 6 / zoom,
-        fill: "#40775e",
-        "font-size": 11 / zoom,
-      },
-      g,
-    );
-    label.textContent = `${e.name || "Viewport"} 1:${e.denominator || "…"}`;
     if (e.showLabel) {
       const caption = viewportCaption(e);
       const text = svg(
@@ -598,6 +629,15 @@ function paint() {
     try {
       drawEntity(e);
     } catch {}
+  if (
+    editOperation &&
+    hover &&
+    ["target", "side"].includes(editOperation.phase)
+  ) {
+    try {
+      for (const e of editedEntities(hover)) drawEntity(e, true);
+    } catch {}
+  }
   if (tool === "block" && pendingBlock && hover)
     drawEntity({ ...pendingBlock, points: [hover] }, true);
   if (points.length && hover) {
@@ -820,6 +860,8 @@ async function showPage(n, keepView = false) {
   if (drag?.kind === "entity") state = drag.before;
   drag = null;
   clearTracking();
+  if (editOperation) tool = "select";
+  editOperation = null;
   const token = ++epoch;
   busy = true;
   pdfSegments = [];
@@ -980,6 +1022,7 @@ function saveDocument(d) {
   autosave();
 }
 function emptyWorkspace() {
+  editOperation = null;
   ++epoch;
   activeId = pdf = bytes = viewport = null;
   state = { entities: [], scales: {} };
@@ -1145,11 +1188,17 @@ function localPoint(ev, constrained = true) {
   }
   if (drawing && !snapHit) {
     const origin = points.at(-1);
-    if (origin && ortho && ["line", "leader", "dim"].includes(tool))
+    if (
+      origin &&
+      ortho &&
+      ["line", "leader", "dim", "move", "copy"].includes(tool)
+    )
       p = constrain(origin, rawPointer, true);
     else {
       const polarHit =
-        origin && polar && ["line", "leader", "dim", "circle"].includes(tool)
+        origin &&
+        polar &&
+        ["line", "leader", "dim", "circle", "move", "copy"].includes(tool)
           ? polarPoint(origin, rawPointer, polarAngle)
           : null;
       if (polarHit) {
@@ -1451,6 +1500,28 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
     toast(
       "Linjen är kopierad och kan redigeras. Originalet finns kvar i PDF-underlaget.",
     );
+    return;
+  }
+  if (editOperation) {
+    if (editOperation.phase === "select") {
+      const id = ev.target.closest("[data-id]")?.dataset.id;
+      const e = state.entities.find((e) => e.id === id);
+      if (
+        !e ||
+        !(tool === "offset" ? offsetTypes : editableTypes).includes(e.type)
+      ) {
+        toast(
+          tool === "offset"
+            ? "Välj en ritad linje, cirkel eller rektangel."
+            : "Välj ett ritat objekt. Använd Hämta linje för PDF-underlaget.",
+        );
+        return;
+      }
+      const i = editOperation.ids.indexOf(id);
+      if (i < 0) editOperation.ids.push(id);
+      else editOperation.ids.splice(i, 1);
+      refresh();
+    } else editPoint(p);
     return;
   }
   if (tool === "select") {
@@ -1892,7 +1963,96 @@ $("polarAngle").onchange = () => {
   clearTracking();
   refresh();
 };
+function editedEntities(p) {
+  return editOperation.ids.map((id) => {
+    const e = state.entities.find((e) => e.id === id);
+    if (tool === "offset") {
+      const scale = entityScale(e, state.entities, state.scales);
+      if (!scale)
+        throw Error("Kalibrera pappret eller använd en viewport först.");
+      return offsetEntity(e, editOperation.amount / scale, p);
+    }
+    return translateEntity(e, points[0], p);
+  });
+}
+function editPoint(p) {
+  if (editOperation.phase === "base") {
+    points = [p];
+    editOperation.phase = "target";
+    refresh();
+    return;
+  }
+  if (!["target", "side"].includes(editOperation.phase)) return;
+  try {
+    const edits = editedEntities(p),
+      next = clone(state);
+    for (const e of edits) {
+      if (tool === "move")
+        next.entities[next.entities.findIndex((x) => x.id === e.id)] = e;
+      else next.entities.push({ ...e, id: crypto.randomUUID() });
+    }
+    commit(next);
+    if (tool === "move") setTool("select");
+    else {
+      clearTracking();
+      hover = null;
+      refresh();
+    }
+  } catch (e) {
+    error(e);
+  }
+}
+function editCommand(value, number) {
+  if (editOperation.phase === "select") {
+    if (!editOperation.ids.length) {
+      toast("Välj minst ett objekt först.");
+      return;
+    }
+    editOperation.phase = tool === "offset" ? "distance" : "base";
+  } else if (editOperation.phase === "distance") {
+    if (!(number > 0) || !Number.isFinite(number)) {
+      toast("Ange ett positivt avstånd i mm.");
+      return;
+    }
+    if (
+      editOperation.ids.some(
+        (id) =>
+          !entityScale(
+            state.entities.find((e) => e.id === id),
+            state.entities,
+            state.scales,
+          ),
+      )
+    ) {
+      toast("Kalibrera pappret eller använd en viewport först.");
+      return;
+    }
+    editOperation.amount = number;
+    editOperation.phase = "side";
+  } else if (editOperation.phase === "target" && number > 0 && hover) {
+    const scales = editOperation.ids.map((id) =>
+      entityScale(
+        state.entities.find((e) => e.id === id),
+        state.entities,
+        state.scales,
+      ),
+    );
+    if (!scales[0] || scales.some((s) => s !== scales[0])) {
+      toast("Exakt avstånd kräver objekt med samma kalibrerade skala.");
+      return;
+    }
+    editPoint(constrain(points[0], hover, false, number, scales[0]));
+  } else if (!value) setTool("select");
+  else toast("Ange en punkt i ritningen eller ett giltigt avstånd.");
+  refresh();
+}
 const aliases = {
+  M: "move",
+  MOVE: "move",
+  CO: "copy",
+  COPY: "copy",
+  O: "offset",
+  OFFSET: "offset",
   L: "line",
   C: "circle",
   REC: "rect",
@@ -1916,9 +2076,11 @@ $("command").addEventListener("keydown", (ev) => {
   const value = ev.target.value.trim(),
     number = Number(value.replace(",", "."));
   ev.target.value = "";
-  if (["HJÄLP", "HELP", "?"].includes(value.toUpperCase()))
+  if (editOperation && (value === "" || Number.isFinite(number)))
+    editCommand(value, number);
+  else if (["HJÄLP", "HELP", "?"].includes(value.toUpperCase()))
     toast(
-      "L: linje · C: cirkel · REC: rektangel · A: båge · T: text · LE: leader · BLOCK: blockbibliotek · DIM: mått · CAL: kalibrera · VP: viewport · MASK: maska · TEXTEDIT: ersätt text · GETLINE: kopiera PDF-linje · COVERLINE: täck linje · ERASELINE: ta bort PDF-linje · U: ångra · Z: anpassa · ZE: visa allt · Esc: avbryt",
+      "M: flytta · CO: kopiera · O: offset · L: linje · C: cirkel · REC: rektangel · A: båge · T: text · LE: leader · BLOCK: blockbibliotek · DIM: mått · CAL: kalibrera · VP: viewport · MASK: maska · TEXTEDIT: ersätt text · GETLINE: kopiera PDF-linje · COVERLINE: täck linje · ERASELINE: ta bort PDF-linje · U: ångra · Z: anpassa · ZE: visa allt · Esc: avbryt",
     );
   else if (value.toUpperCase() === "BLOCK") library.open();
   else if (aliases[value.toUpperCase()]) setTool(aliases[value.toUpperCase()]);
@@ -1958,6 +2120,7 @@ window.addEventListener("keydown", (ev) => {
     hover = null;
     selected = null;
     tool = "select";
+    editOperation = null;
     $("command").value = "";
     $("command").blur();
     refresh();

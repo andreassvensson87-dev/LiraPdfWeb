@@ -126,3 +126,14 @@ Viewportskala, objekt och tillhörighet sparas i projektfilen och i autosparande
 ## Ny PDF
 
 **Arkiv → Ny PDF** skapar ett tomt dokument i en ny flik. Välj namn, A0–A4 och liggande eller stående orientering. Pappret börjar i skala 1:1. Du kan rita direkt, kalibrera pappret eller lägga in viewports med egna skalor. Mallar med ramar och rithuvuden är ännu inte implementerade.
+
+## Redigera ritade objekt
+
+Under **Redigera** finns **Flytta (M/MOVE)**, **Kopiera (CO/COPY)** och **Offset (O/OFFSET)** med arbetsgång från LiraCADWeb. Välj ett objekt före kommandot, eller klicka på ett eller flera objekt efter att kommandot startats och tryck Enter/mellanslag. Klicka igen på ett valt objekt för att välja bort det.
+
+- Flytta/Kopiera: välj baspunkt och målpunkt. Du kan peka ut riktningen och skriva ett avstånd i mm om de valda objekten har samma kalibrerade skala. Snappning, ORTHO, POLAR och OTRACK hjälper till vid placeringen. Kopiera låter dig placera flera kopior från samma baspunkt.
+- Offset: välj linjer, cirklar eller rektanglar, skriv avstånd i mm och klicka på önskad sida. Avståndet räknas med respektive objekts viewportskala eller papperskalibrering. För stort avstånd inåt avvisas. Bågar stöds ännu inte av Offset.
+- Förhandsvisningen visar placeringen före klick. Escape avbryter; Ångra återställer varje genomförd ändring. Flyttade/kopierade objekt behåller sin viewporttillhörighet. Viewportramar redigeras separat med sina grepp.
+- PDF-underlagets linjer hämtas först med **Hämta linje**. Det ger en redigerbar kopia; originalet ligger kvar tills du använder Täck linje eller Ta bort PDF-linje.
+
+Viewportens namn och skala visas enbart under rutan, när visningen är aktiverad.
