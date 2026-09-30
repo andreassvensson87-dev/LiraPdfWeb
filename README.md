@@ -160,3 +160,14 @@ Viewportens namn och skala visas enbart under rutan, när visningen är aktivera
 Trimma/Förläng ändrar raka linjer mot gränser av linjer, rektanglar eller raka polylinjer. Dela upp en kontur med X före trimning. Kurvor är ännu inte gränser i dessa två verktyg. Sammanfoga arbetar med raka segment. Rotera, Skala och Spegla stöder linjer, cirklar, rektanglar, bågar och raka polylinjer; roterade/speglade rektanglar blir polylinjer. Text, mått och PDF-block ingår inte i dessa tre verktyg. Linjebredder behåller sin pappersstorlek. Skala ändrar objektens verkliga storlek, medan viewportskala ändrar visningsskalan.
 
 Ändringar sparas i projekt och PDF-export. Escape avbryter pågående val; varje genomförd åtgärd kan ångras.
+
+## CAD-markering
+
+Med **Markera** drar du från en tom yta:
+
+- **Vänster → höger:** blå ruta, väljer endast objekt helt innanför.
+- **Höger → vänster:** grön streckad ruta, väljer också objekt som korsar rutan.
+- **Shift:** lägg till i urvalet. **Alt:** välj bort. Shift-klick växlar enskilda objekt.
+- Flera markerade objekt kan dras tillsammans, raderas eller skickas till redigeringsverktyg som Flytta och Kopiera. Byte av menyflik behåller urvalet. Escape avmarkerar.
+
+Markeringsrutan fungerar även när ett redigeringskommando väntar på objekt. Markeringen gäller ritade objekt och importerade block; PDF-underlagets linjer hämtas först med Hämta linje.

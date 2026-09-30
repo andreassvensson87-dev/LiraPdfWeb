@@ -1,3 +1,5 @@
+import { inSelection, mergeSelection } from "./selection.js";
+const selection = new Set();
 import {
   transformEntity,
   joinEntities,
@@ -183,7 +185,7 @@ function showCategory(category) {
 for (const button of document.querySelectorAll("[data-category]")) {
   button.onclick = () => {
     if (busy || pendingDialog) return;
-    setTool("select");
+    if (tool !== "select") setTool("select");
     showCategory(button.dataset.category);
   };
   button.onkeydown = (event) => {
@@ -195,8 +197,9 @@ for (const button of document.querySelectorAll("[data-category]")) {
       event.key === "Home"
         ? 0
         : event.key === "End"
-          ? 2
-          : (i + (event.key === "ArrowRight" ? 1 : 2)) % 3;
+          ? buttons.length - 1
+          : (i + (event.key === "ArrowRight" ? 1 : buttons.length - 1)) %
+            buttons.length;
     buttons[i].click();
     buttons[i].focus();
   };
@@ -334,6 +337,7 @@ function history(redo = false) {
   tool = "select";
   if (before !== removalKey(state)) showPage(pageNo, true);
   selected = null;
+  selection.clear();
   points = [];
   refresh();
   autosave();
@@ -366,11 +370,12 @@ $("dialog").addEventListener("close", () => {
 });
 function setTool(t) {
   if (busy || !pdf) return;
-  const previous = current();
+  const previousIds = [...selection];
   editOperation = transformTools.includes(t)
     ? {
-        ids:
-          previous && editTypes(t).includes(previous.type) ? [previous.id] : [],
+        ids: previousIds.filter((id) =>
+          editTypes(t).includes(state.entities.find((e) => e.id === id)?.type),
+        ),
         phase: "select",
         amount: null,
       }
@@ -388,6 +393,7 @@ function setTool(t) {
   points = [];
   hover = null;
   selected = null;
+  selection.clear();
   $("toolname").textContent = names[t];
   refresh();
 }
@@ -473,7 +479,7 @@ function prompt() {
     extract: ["Välj PDF-linje att kopiera · originalet finns kvar"],
     mask: ["Dra ett område att täcka · originalinnehållet finns kvar"],
     select: [
-      "Välj objekt · mellanslag + dra: panorera · hjul: zooma · HJÄLP: kommandon",
+      "Välj objekt eller dra ruta · vänster→höger: innanför · höger→vänster: korsande",
     ],
   };
   const selectedOwner =
@@ -543,7 +549,7 @@ function drawEntity(e, preview = false) {
     opacity: preview ? 0.55 : 1,
   });
   const isSelected =
-    !preview && (e.id === selected || editOperation?.ids.includes(e.id));
+    !preview && (selection.has(e.id) || editOperation?.ids.includes(e.id));
   if (e.type === "viewport") {
     const r = box(...e.points);
     svg(
@@ -818,9 +824,29 @@ function paint() {
       "pointer-events": "none",
     });
   }
+  if (drag?.kind === "selection") {
+    const r = box(drag.start, drag.end),
+      crossing = drag.end.x < drag.start.x;
+    svg("rect", {
+      x: r.x,
+      y: r.y,
+      width: r.w,
+      height: r.h,
+      fill: crossing ? "#36a777" : "#408cdc",
+      "fill-opacity": 0.12,
+      stroke: crossing ? "#218654" : "#2879c4",
+      "stroke-width": 1 / zoom,
+      "stroke-dasharray": crossing ? `${5 / zoom} ${3 / zoom}` : "none",
+      "pointer-events": "none",
+      "data-selection-window": crossing ? "crossing" : "window",
+    });
+  }
 }
 function refresh() {
-  $("toolname").textContent = names[current()?.type || tool];
+  $("toolname").textContent =
+    selection.size > 1
+      ? `${selection.size} objekt`
+      : names[current()?.type || tool];
   const activeType = current()?.type || tool;
   const hasStyle =
     activeType !== "viewport" &&
@@ -847,24 +873,26 @@ function refresh() {
   $("selectionHint").hidden =
     hasStyle || ["block", "viewport"].includes(current()?.type);
   $("selectionHint").textContent =
-    activeType === "coverLine"
-      ? "Täckning med vitt · originalet finns kvar"
-      : activeType === "eraseLine"
-        ? "Tar bort fristående raka streck ur PDF-innehållet"
-        : activeType === "extract"
-          ? "Hämta en kopia · originalet finns kvar"
-          : activeType === "calibrate"
-            ? "Välj två punkter med känt avstånd"
-            : activeType === "mask"
-              ? "Vit täckning · originalinnehållet finns kvar"
-              : "Välj ett verktyg eller ett objekt i ritningen";
+    selection.size > 1
+      ? "Välj redigeringsverktyg · Shift: lägg till · Alt: välj bort"
+      : activeType === "coverLine"
+        ? "Täckning med vitt · originalet finns kvar"
+        : activeType === "eraseLine"
+          ? "Tar bort fristående raka streck ur PDF-innehållet"
+          : activeType === "extract"
+            ? "Hämta en kopia · originalet finns kvar"
+            : activeType === "calibrate"
+              ? "Välj två punkter med känt avstånd"
+              : activeType === "mask"
+                ? "Vit täckning · originalinnehållet finns kvar"
+                : "Välj ett verktyg eller ett objekt i ritningen";
   $("lineControl").hidden = ["text", "replace", "mask"].includes(activeType);
   $("textControl").hidden = !["text", "replace", "leader", "dim"].includes(
     activeType,
   );
   $("editText").hidden =
     !current() || !["text", "leader", "replace"].includes(activeType);
-  $("delete").hidden = !current();
+  $("delete").hidden = !selection.size;
   $("replace").classList.toggle("active", tool === "replace");
   prompt();
   paint();
@@ -873,7 +901,7 @@ function refresh() {
     .forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
   $("undo").disabled = !undoStack.length;
   $("redo").disabled = !redoStack.length;
-  $("delete").disabled = !current();
+  $("delete").disabled = !selection.size;
   $("editText").disabled =
     !current() || !["text", "leader", "replace"].includes(current().type);
   for (const [id, on, label] of [
@@ -893,6 +921,8 @@ function refresh() {
   $("calibrate").textContent = scale ? "Ändra skala" : "Kalibrera";
 }
 function select(id) {
+  selection.clear();
+  if (id) selection.add(id);
   selected = id;
   const e = current();
   if (e) {
@@ -978,6 +1008,7 @@ async function showPage(n, keepView = false) {
   pageNo = n;
   points = [];
   selected = null;
+  selection.clear();
   hover = null;
   let editedPdf;
   const previous = renderTask;
@@ -1140,6 +1171,7 @@ function emptyWorkspace() {
   pdfSegments = [];
   textItems = [];
   selected = hover = snapHit = drag = null;
+  selection.clear();
   tool = "select";
   pageNo = 0;
   $("sheet").hidden = true;
@@ -1229,7 +1261,10 @@ function localPoint(ev, constrained = true) {
     const raw = { ...p };
     let best = 9 / zoom;
     for (const e of pageEntities().filter(
-      (e) => e.id !== drag?.id && e.type !== "pdfErase",
+      (e) =>
+        !drag?.ids?.includes(e.id) &&
+        e.id !== drag?.id &&
+        e.type !== "pdfErase",
     ))
       for (const [index, q] of e.points.entries()) {
         const d = distance(raw, q);
@@ -1250,6 +1285,7 @@ function localPoint(ev, constrained = true) {
     const ownSegments = pageEntities()
       .filter(
         (e) =>
+          !drag?.ids?.includes(e.id) &&
           e.id !== drag?.id &&
           ["line", "rect", "leader", "polyline"].includes(e.type),
       )
@@ -1612,6 +1648,26 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
     );
     return;
   }
+  if (
+    (tool === "select" || editOperation?.phase === "select") &&
+    !ev.target.closest("[data-id]")
+  ) {
+    drag = {
+      kind: "selection",
+      start: localPoint(ev, false),
+      end: localPoint(ev, false),
+      before: [...(editOperation?.ids || selection)],
+      edit: !!editOperation,
+      mode: ev.altKey
+        ? "remove"
+        : ev.shiftKey || editOperation
+          ? "add"
+          : "replace",
+    };
+    $("viewport").setPointerCapture(ev.pointerId);
+    paint();
+    return;
+  }
   if (editOperation) {
     if (editOperation.phase === "select") {
       const id = ev.target.closest("[data-id]")?.dataset.id;
@@ -1642,15 +1698,25 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
   if (tool === "select") {
     const id = ev.target.closest("[data-id]")?.dataset.id;
     if (id) {
-      select(id);
+      if (ev.shiftKey || ev.altKey) {
+        if (ev.altKey || selection.has(id)) selection.delete(id);
+        else selection.add(id);
+        selected = selection.size === 1 ? [...selection][0] : null;
+        if (selected) select(selected);
+        refresh();
+        return;
+      }
+      if (!selection.has(id)) select(id);
       drag = {
         kind: "entity",
+        ids: [...selection],
         start: p,
         before: clone(state),
         id,
-        grip: ev.target.hasAttribute("data-grip")
-          ? Number(ev.target.getAttribute("data-grip"))
-          : null,
+        grip:
+          selection.size === 1 && ev.target.hasAttribute("data-grip")
+            ? Number(ev.target.getAttribute("data-grip"))
+            : null,
         moved: false,
       };
       $("viewport").setPointerCapture(ev.pointerId);
@@ -1667,8 +1733,13 @@ $("viewport").addEventListener("pointerleave", () => {
 });
 $("viewport").addEventListener("pointermove", (ev) => {
   if (!viewport) return;
-  const p = localPoint(ev);
+  const p = localPoint(ev, drag?.kind !== "selection");
   $("coords").textContent = `X ${p.x.toFixed(0)} · Y ${p.y.toFixed(0)}`;
+  if (drag?.kind === "selection") {
+    drag.end = p;
+    paint();
+    return;
+  }
   if (drag?.kind === "pan") {
     pan = {
       x: drag.pan.x + ev.clientX - drag.start.x,
@@ -1680,6 +1751,16 @@ $("viewport").addEventListener("pointermove", (ev) => {
   if (drag?.kind === "entity") {
     const delta = { x: p.x - drag.start.x, y: p.y - drag.start.y };
     if (distance(p, drag.start) > 2 / zoom) drag.moved = true;
+    if (drag.ids?.length > 1) {
+      const ids = new Set(drag.ids);
+      for (const e of drag.before.entities)
+        if (ids.has(e.viewportId)) ids.add(e.id);
+      for (const e of drag.before.entities.filter((e) => ids.has(e.id)))
+        state.entities[state.entities.findIndex((x) => x.id === e.id)] =
+          translateEntity(e, drag.start, p);
+      paint();
+      return;
+    }
     const original = drag.before.entities.find((e) => e.id === drag.id),
       e = current();
     if (!e) return;
@@ -1727,6 +1808,50 @@ function finishDrag(ev, cancel = false) {
   if (!drag) return;
   const d = drag;
   drag = null;
+  if (d.kind === "selection") {
+    if (!cancel) {
+      const end = localPoint(ev, false);
+      const hits =
+        distance(d.start, end) > 3 / zoom
+          ? pageEntities()
+              .filter((e) => {
+                const group = [
+                  ...$("overlay").querySelectorAll("g.entity"),
+                ].find((g) => g.dataset.id === e.id);
+                const texts = group
+                  ? [...group.querySelectorAll("text")].map((t) => {
+                      const b = t.getBBox();
+                      return { x: b.x, y: b.y, w: b.width, h: b.height };
+                    })
+                  : [];
+                return inSelection(
+                  e,
+                  d.start,
+                  end,
+                  entityScale(e, state.entities, state.scales) || 1,
+                  texts,
+                );
+              })
+              .map((e) => e.id)
+          : [];
+      let ids = mergeSelection(d.before, hits, d.mode);
+      if (d.edit) {
+        ids = ids.filter((id) =>
+          editTypes(tool).includes(
+            state.entities.find((e) => e.id === id)?.type,
+          ),
+        );
+        if (["pinsert", "pdelete"].includes(tool)) ids = ids.slice(-1);
+        editOperation.ids = ids;
+      } else {
+        selection.clear();
+        ids.forEach((id) => selection.add(id));
+        selected = ids.length === 1 ? ids[0] : null;
+        if (selected) select(selected);
+      }
+    }
+    refresh();
+  }
   if (d.kind === "area") {
     if (cancel) {
       points = [];
@@ -1788,17 +1913,17 @@ $("overlay").addEventListener("dblclick", () => {
   if (tool === "select") editText();
 });
 function remove() {
-  if (!selected) return;
-  const next = clone(state);
-  const removedViewport = current()?.type === "viewport";
+  if (!selection.size) return;
+  const ids = new Set(selection),
+    next = clone(state);
   next.entities = next.entities.filter(
-    (e) => e.id !== selected && (!removedViewport || e.viewportId !== selected),
+    (e) => !ids.has(e.id) && !ids.has(e.viewportId),
   );
-  if (removedViewport)
-    toast("Viewporten och dess objekt har tagits bort. Ångra återställer dem.");
   selected = null;
+  selection.clear();
   commit(next);
 }
+
 for (const key of ["color", "width", "fontSize"])
   $(key).onchange = () => {
     if (current()) {
@@ -2369,6 +2494,7 @@ window.addEventListener("keydown", (ev) => {
     points = [];
     hover = null;
     selected = null;
+    selection.clear();
     tool = "select";
     editOperation = null;
     $("command").value = "";
