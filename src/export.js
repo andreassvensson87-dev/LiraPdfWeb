@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import { applyLineRemovals } from "./pdf-line-edit.js";
 import { blockCorners } from "./pdf-block.js";
+import { entityScale } from "./viewports.js";
 import { primitives } from "./core.js";
 const parseColor = (c) =>
   rgb(
@@ -21,6 +22,7 @@ export async function exportPdf(bytes, entities, scales, pdf) {
       return { x, y };
     };
     for (const e of entities.filter((e) => e.page === i + 1)) {
+      if (e.type === "viewport") continue;
       if (e.type === "block") {
         let embedded = blocks.get(e.blockPdf);
         if (!embedded) {
@@ -46,7 +48,10 @@ export async function exportPdf(bytes, entities, scales, pdf) {
         continue;
       }
       const color = parseColor(e.color);
-      for (const shape of primitives(e, scales[i + 1] || 1)) {
+      for (const shape of primitives(
+        e,
+        entityScale(e, entities, scales) || 1,
+      )) {
         if (shape.kind === "line")
           page.drawLine({
             start: pt(shape.a),

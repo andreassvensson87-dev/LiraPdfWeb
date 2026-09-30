@@ -1,4 +1,11 @@
 import "./style.css";
+import {
+  viewportAt,
+  entityScale,
+  changeViewportScale,
+  transformChildren,
+  mmPerPoint,
+} from "./viewports.js";
 import { findRemovableLine, applyLineRemovals } from "./pdf-line-edit.js";
 import { blockLibrary } from "./block-library.js";
 import { blockPage, blockCorners } from "./pdf-block.js";
@@ -32,6 +39,7 @@ const tools = [
   ["arc", "◜", "Båge", "A"],
   ["text", "T", "Text", "T"],
   ["leader", "↗", "Leader", "LE"],
+  ["viewport", "", "Viewport", "VP"],
   ["dim", "↔", "Mått", "DIM"],
   ["mask", "▧", "Maska", "MASK"],
   ["extract", "", "Hämta linje", "GETLINE"],
@@ -51,6 +59,7 @@ const toolCategories = {
   coverLine: "edit",
   eraseLine: "edit",
   replace: "edit",
+  viewport: "measure",
   dim: "measure",
   calibrate: "measure",
 };
@@ -123,6 +132,7 @@ let activeId = null,
   pdfSegments = [],
   snapHit = null;
 const counts = {
+  viewport: 2,
   line: 2,
   circle: 2,
   rect: 2,
@@ -227,6 +237,7 @@ function ask(title, help, value = "", numeric = false) {
   $("numberInput").hidden = !numeric;
   const input = $(numeric ? "numberInput" : "textInput");
   input.value = value;
+  if (numeric) input.setAttribute("aria-label", title);
   return new Promise((resolve) => {
     pendingDialog = resolve;
     $("dialog").showModal();
@@ -247,10 +258,6 @@ $("dialog").addEventListener("close", () => {
 });
 function setTool(t) {
   if (busy || !pdf) return;
-  if (t === "dim" && !state.scales[pageNo]) {
-    toast("Kalibrera sidans skala innan du måttsätter.");
-    t = "calibrate";
-  }
   if (drag?.kind === "entity") state = drag.before;
   drag = null;
   tool = t;
@@ -269,6 +276,8 @@ for (const [id, icon, label, shortcut] of tools) {
   const paths = {
     block:
       '<rect x="4" y="3" width="13" height="17"/><path d="M9 12h12m-6-6v12"/>',
+    viewport:
+      '<rect x="3" y="4" width="18" height="16" stroke-dasharray="3 2"/><path d="M8 9h8v6H8Z"/>',
     select: '<path d="m5 3 14 9-7 1-3 7Z"/>',
     line: '<path d="M5 19 19 5"/><rect x="3" y="17" width="4" height="4"/><rect x="17" y="3" width="4" height="4"/>',
     circle: '<circle cx="12" cy="12" r="8"/>',
@@ -289,8 +298,16 @@ for (const [id, icon, label, shortcut] of tools) {
 }
 showCategory(activeCategory);
 $("measureCalibrate").onclick = () => setTool("calibrate");
+function scaleContext(p) {
+  const owner = viewportAt(state.entities, pageNo, p);
+  return {
+    owner,
+    scale: owner ? owner.denominator * mmPerPoint : state.scales[pageNo],
+  };
+}
 function prompt() {
   const steps = {
+    viewport: ["Välj viewportens första hörn", "Välj motsatt hörn"],
     block: ["Klicka för att placera PDF-block · Esc avslutar"],
     line: ["Välj startpunkt", "Välj slutpunkt eller skriv längd"],
     circle: ["Välj centrum", "Välj radiepunkt eller skriv radie"],
@@ -320,7 +337,23 @@ function prompt() {
       "Välj objekt · mellanslag + dra: panorera · hjul: zooma · HJÄLP: kommandon",
     ],
   };
-  const next = steps[tool]?.[points.length] || "Välj punkt";
+  const selectedOwner =
+    current()?.type === "viewport"
+      ? current()
+      : state.entities.find(
+          (v) => v.type === "viewport" && v.id === current()?.viewportId,
+        );
+  const context = selectedOwner
+    ? { owner: selectedOwner, scale: selectedOwner.denominator * mmPerPoint }
+    : current()
+      ? { owner: null, scale: state.scales[pageNo] }
+      : scaleContext(points[0] || hover);
+  const scaleText = context.owner
+    ? `Viewport 1:${context.owner.denominator}`
+    : context.scale
+      ? `Papper 1:${Number((context.scale / mmPerPoint).toFixed(2))}`
+      : "Papper · ej kalibrerat";
+  const next = `${steps[tool]?.[points.length] || "Välj punkt"} · ${scaleText}`;
   if ($("prompt").textContent !== next) {
     $("prompt").textContent = next;
   }
@@ -338,6 +371,48 @@ function drawEntity(e, preview = false) {
     opacity: preview ? 0.55 : 1,
   });
   const isSelected = e.id === selected;
+  if (e.type === "viewport") {
+    const r = box(...e.points);
+    svg(
+      "rect",
+      {
+        x: r.x,
+        y: r.y,
+        width: r.w,
+        height: r.h,
+        fill: "none",
+        stroke: isSelected ? "#147b60" : "#759a88",
+        "stroke-width": 1 / zoom,
+        "stroke-dasharray": `${5 / zoom} ${4 / zoom}`,
+      },
+      g,
+    );
+    svg(
+      "rect",
+      {
+        x: r.x,
+        y: r.y,
+        width: r.w,
+        height: r.h,
+        fill: "none",
+        stroke: "transparent",
+        "stroke-width": 10 / zoom,
+        "pointer-events": "stroke",
+      },
+      g,
+    );
+    const label = svg(
+      "text",
+      {
+        x: r.x + 5 / zoom,
+        y: r.y - 6 / zoom,
+        fill: "#40775e",
+        "font-size": 11 / zoom,
+      },
+      g,
+    );
+    label.textContent = `Viewport 1:${e.denominator || "…"}`;
+  }
   if (e.type === "block") {
     const a = e.points[0];
     const group = svg(
@@ -372,7 +447,10 @@ function drawEntity(e, preview = false) {
         group,
       );
   }
-  for (const s of primitives(e, state.scales[pageNo] || 1)) {
+  for (const s of primitives(
+    e,
+    entityScale(e, state.entities, state.scales) || 1,
+  )) {
     if (s.kind === "line") {
       svg(
         "line",
@@ -476,7 +554,9 @@ function paint() {
       });
   }
 
-  for (const e of pageEntities().filter((e) => e.type !== "pdfErase"))
+  for (const e of pageEntities()
+    .filter((e) => e.type !== "pdfErase")
+    .sort((a, b) => (a.type !== "viewport") - (b.type !== "viewport")))
     try {
       drawEntity(e);
     } catch {}
@@ -491,6 +571,8 @@ function paint() {
         drawEntity(
           {
             type: tool,
+            page: pageNo,
+            viewportId: scaleContext(ps[0]).owner?.id,
             points: ps,
             text: tool === "leader" ? "Kommentar" : "",
             ...style(),
@@ -541,11 +623,15 @@ function refresh() {
   $("toolname").textContent = names[current()?.type || tool];
   const activeType = current()?.type || tool;
   const hasStyle =
+    activeType !== "viewport" &&
     activeType !== "block" &&
     activeType !== "select" &&
     activeType !== "calibrate" &&
     !(activeType === "mask" && !current()) &&
     !["extract", "coverLine", "eraseLine"].includes(activeType);
+  $("viewportControls").hidden = current()?.type !== "viewport";
+  if (current()?.type === "viewport")
+    $("viewportScale").value = current().denominator;
   $("blockControls").hidden = current()?.type !== "block";
   if (current()?.type === "block") {
     $("blockSize").value = (
@@ -555,7 +641,8 @@ function refresh() {
     $("blockRotation").value = current().rotation;
   }
   $("styleControls").hidden = !hasStyle;
-  $("selectionHint").hidden = hasStyle || current()?.type === "block";
+  $("selectionHint").hidden =
+    hasStyle || ["block", "viewport"].includes(current()?.type);
   $("selectionHint").textContent =
     activeType === "coverLine"
       ? "Täckning med vitt · originalet finns kvar"
@@ -955,6 +1042,12 @@ function localPoint(ev, constrained = true) {
 }
 async function addPoint(p) {
   if (busy || pendingDialog || !viewport) return;
+  if (tool === "dim" && !points.length && !scaleContext(p).scale) {
+    toast(
+      "Kalibrera pappret eller välj en startpunkt i en viewport innan du måttsätter.",
+    );
+    return;
+  }
   points.push(p);
   if (points.length < counts[tool]) {
     refresh();
@@ -964,6 +1057,42 @@ async function addPoint(p) {
     ps = clone(points);
   points = [];
   try {
+    if (type === "viewport") {
+      const r = box(...ps);
+      if (r.w < 1 || r.h < 1)
+        throw Error("Viewporten måste ha bredd och höjd.");
+      const answer = await ask(
+        "Viewportskala",
+        "Ange nämnaren: 100 betyder skala 1:100. Papprets skala gäller utanför rutan.",
+        "100",
+        true,
+      );
+      if (answer === null) return;
+      const denominator = Number(answer);
+      if (
+        !Number.isFinite(denominator) ||
+        denominator < 1 ||
+        denominator > 100000
+      )
+        throw Error("Ange en skala mellan 1:1 och 1:100000.");
+      const e = {
+        id: crypto.randomUUID(),
+        type,
+        page: pageNo,
+        points: [
+          { x: r.x, y: r.y },
+          { x: r.x + r.w, y: r.y + r.h },
+        ],
+        denominator,
+        ...style(),
+      };
+      const next = clone(state);
+      next.entities.push(e);
+      commit(next);
+      setTool("select");
+      select(e.id);
+      return;
+    }
     if (type === "calibrate") {
       const d = distance(...ps);
       if (d < 0.01) throw Error("Välj två olika punkter.");
@@ -1060,6 +1189,11 @@ async function addPoint(p) {
       ...style(),
       ...(type === "mask" ? { color: "#ffffff" } : {}),
       ...(replacementStyle || {}),
+      ...(["line", "circle", "rect", "arc", "text", "leader", "dim"].includes(
+        type,
+      )
+        ? { viewportId: scaleContext(ps[0]).owner?.id }
+        : {}),
     };
     const next = clone(state);
     next.entities.push(e);
@@ -1090,6 +1224,7 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
       ...clone(pendingBlock),
       id: crypto.randomUUID(),
       page: pageNo,
+      viewportId: scaleContext(p).owner?.id,
       points: [p],
     };
     const next = clone(state);
@@ -1244,10 +1379,20 @@ $("viewport").addEventListener("pointermove", (ev) => {
         ? { x: q.x + delta.x, y: q.y + delta.y }
         : { ...q },
     );
+    if (e.type === "viewport" && drag.grip === null) {
+      for (const child of drag.before.entities.filter(
+        (x) => x.viewportId === e.id,
+      )) {
+        const index = state.entities.findIndex((x) => x.id === child.id);
+        state.entities[index] = clone(child);
+      }
+      transformChildren(state, e.id, { x: 0, y: 0 }, 1, delta);
+    }
     paint();
     return;
   }
   hover = p;
+  prompt();
   paint();
 });
 function finishDrag(ev, cancel = false) {
@@ -1266,7 +1411,12 @@ function finishDrag(ev, cancel = false) {
     if (!cancel && d.moved) {
       try {
         const e = next.entities.find((e) => e.id === d.id);
-        primitives(e, next.scales[e.page] || 1);
+        if (
+          e.type === "viewport" &&
+          (box(...e.points).w < 1 || box(...e.points).h < 1)
+        )
+          throw Error("Viewporten måste ha bredd och höjd.");
+        primitives(e, entityScale(e, next.entities, next.scales) || 1);
         commit(next);
       } catch (e) {
         error(e);
@@ -1312,7 +1462,12 @@ $("overlay").addEventListener("dblclick", () => {
 function remove() {
   if (!selected) return;
   const next = clone(state);
-  next.entities = next.entities.filter((e) => e.id !== selected);
+  const removedViewport = current()?.type === "viewport";
+  next.entities = next.entities.filter(
+    (e) => e.id !== selected && (!removedViewport || e.viewportId !== selected),
+  );
+  if (removedViewport)
+    toast("Viewporten och dess objekt har tagits bort. Ångra återställer dem.");
   selected = null;
   commit(next);
 }
@@ -1441,6 +1596,17 @@ for (const id of ["blockSize", "blockRotation"])
     } else block.rotation = ((value % 360) + 360) % 360;
     commit(next);
   };
+$("viewportScale").onchange = () => {
+  if (busy || pendingDialog || current()?.type !== "viewport") return;
+  try {
+    commit(
+      changeViewportScale(state, selected, Number($("viewportScale").value)),
+    );
+  } catch (e) {
+    error(e);
+    refresh();
+  }
+};
 $("copyBlock").onclick = () => {
   if (current()?.type !== "block") return;
   pendingBlock = clone(current());
@@ -1535,6 +1701,7 @@ const aliases = {
   A: "arc",
   T: "text",
   LE: "leader",
+  VP: "viewport",
   DIM: "dim",
   CAL: "calibrate",
   TEXTEDIT: "replace",
@@ -1553,7 +1720,7 @@ $("command").addEventListener("keydown", (ev) => {
   ev.target.value = "";
   if (["HJÄLP", "HELP", "?"].includes(value.toUpperCase()))
     toast(
-      "L: linje · C: cirkel · REC: rektangel · A: båge · T: text · LE: leader · BLOCK: blockbibliotek · DIM: mått · CAL: kalibrera · MASK: maska · TEXTEDIT: ersätt text · GETLINE: kopiera PDF-linje · COVERLINE: täck linje · ERASELINE: ta bort PDF-linje · U: ångra · Z: anpassa · ZE: visa allt · Esc: avbryt",
+      "L: linje · C: cirkel · REC: rektangel · A: båge · T: text · LE: leader · BLOCK: blockbibliotek · DIM: mått · CAL: kalibrera · VP: viewport · MASK: maska · TEXTEDIT: ersätt text · GETLINE: kopiera PDF-linje · COVERLINE: täck linje · ERASELINE: ta bort PDF-linje · U: ångra · Z: anpassa · ZE: visa allt · Esc: avbryt",
     );
   else if (value.toUpperCase() === "BLOCK") library.open();
   else if (aliases[value.toUpperCase()]) setTool(aliases[value.toUpperCase()]);
@@ -1566,12 +1733,12 @@ $("command").addEventListener("keydown", (ev) => {
     hover &&
     ["line", "circle"].includes(tool)
   ) {
-    if (!state.scales[pageNo])
-      toast("Kalibrera först för att ange längder i mm.");
-    else
-      addPoint(
-        constrain(points[0], hover, ortho, number, state.scales[pageNo]),
+    const activeScale = scaleContext(points[0]).scale;
+    if (!activeScale)
+      toast(
+        "Kalibrera pappret eller börja i en viewport för att ange längder i mm.",
       );
+    else addPoint(constrain(points[0], hover, ortho, number, activeScale));
   } else toast("Okänt kommando. Skriv HJÄLP för att se alla kommandon.");
   ev.target.blur();
 });

@@ -1007,3 +1007,12 @@ dialog input {
   pointer-events: none;
   overflow-wrap: anywhere;
 }
+
+#viewportControls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#viewportScale {
+  width: 80px;
+}

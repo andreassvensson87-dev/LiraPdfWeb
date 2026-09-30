@@ -136,6 +136,7 @@ export function validateProject(p) {
   for (const s of Object.values(p.scales))
     if (!Number.isFinite(s) || s <= 0) throw Error("Ogiltig skala.");
   const counts = {
+    viewport: 2,
     pdfErase: 2,
     block: 1,
     line: 2,
@@ -191,7 +192,40 @@ export function validateProject(p) {
       (!Number.isSafeInteger(e.eraseOffset) || e.eraseOffset < 0)
     )
       throw Error("Ogiltig PDF-redigering.");
+    if (
+      e.type === "viewport" &&
+      (!Number.isFinite(e.denominator) ||
+        e.denominator < 1 ||
+        e.denominator > 100000 ||
+        box(...e.points).w < 1 ||
+        box(...e.points).h < 1)
+    )
+      throw Error("Ogiltig viewport.");
+    if (
+      e.viewportId !== undefined &&
+      (typeof e.viewportId !== "string" ||
+        ![
+          "line",
+          "circle",
+          "rect",
+          "arc",
+          "text",
+          "leader",
+          "dim",
+          "block",
+        ].includes(e.type))
+    )
+      throw Error("Ogiltig viewporttillhörighet.");
     ids.add(e.id);
   }
+  for (const e of p.entities)
+    if (
+      e.viewportId &&
+      !p.entities.some(
+        (v) =>
+          v.type === "viewport" && v.id === e.viewportId && v.page === e.page,
+      )
+    )
+      throw Error("Objektets viewport saknas.");
   return p;
 }

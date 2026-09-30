@@ -110,3 +110,13 @@ Verktygens steg visas i kommandoraden och korta verktygsförklaringar i egenskap
 ## GitHub Pages
 
 GitHub Actions installerar låsta beroenden, kör tester och bygger appen vid push till `main`. Ett godkänt bygge publiceras via GitHub Pages. Ritningar och blockbibliotek lagras i besökarens webbläsare, inte i GitHub-projektet. Bibliotek och autosparade dokument från localhost flyttas inte automatiskt till den publicerade adressen; använd projektfiler för att överföra dokument.
+
+## Viewporter med egen skala
+
+Under **Mått → Viewport** (`VP`) väljer du två hörn och en skala. Ange exempelvis `100` för 1:100. Rita sedan med vanliga verktyg. Startpunkten avgör tillhörigheten: innanför en viewport används dess skala, utanför används sidans kalibrering. Överlappande rutor använder den minsta rutan. Befintliga objekt kopplas inte automatiskt till en ny viewport.
+
+En linje på `5000` mm blir 50 mm på pappret vid 1:100. Markera ramens kant och ändra **Viewport 1:** till `50`: linjen blir 100 mm på pappret, medan måttsättningen fortfarande visar 5000 mm. Samma princip gäller cirklar, bågar och övrig tillhörande geometri. Tillhörigheten behålls om objekt flyttas utanför ramen. Kommandoraden visar aktuell skala.
+
+Skalbyte sker kring ramens övre vänstra hörn; ramen behåller sin storlek. Flytt av hela ramen flyttar även dess objekt; hörngreppen ändrar själva rutans utsträckning. Linjebredder och textstorlekar behåller sin pappersstorlek. Ramen är endast arbetsstöd och skrivs inte ut i PDF-export. PDF-underlag, maskningar och direktredigering av PDF-innehållet följer pappret. Ta bort en viewport tar även bort dess objekt; Ångra återställer allt.
+
+Viewportskala, objekt och tillhörighet sparas i projektfilen och i autosparandet. Exporterade mått använder samma skala som visningen.
