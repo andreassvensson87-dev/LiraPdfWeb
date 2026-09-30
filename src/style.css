@@ -1016,3 +1016,12 @@ dialog input {
 #viewportScale {
   width: 80px;
 }
+
+#polarAngle {
+  font-size: 10px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: #527261;
+  border-radius: 3px;
+}

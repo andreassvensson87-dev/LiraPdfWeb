@@ -1,5 +1,24 @@
 import "./style.css";
 import {
+  polarPoint,
+  trackingPoint,
+  createTracker,
+  snapSymbol,
+} from "./drawing-aids.js";
+const tracker = createTracker();
+let polar = false,
+  otrack = false,
+  polarAngle = 45,
+  trackingAnchors = [],
+  aidGuides = [],
+  trackTimer;
+function clearTracking() {
+  tracker.clear();
+  trackingAnchors = [];
+  aidGuides = [];
+  clearTimeout(trackTimer);
+}
+import {
   viewportAt,
   entityScale,
   changeViewportScale,
@@ -222,6 +241,7 @@ function history(redo = false) {
   const from = redo ? redoStack : undoStack,
     to = redo ? undoStack : redoStack;
   if (!from.length) return;
+  clearTracking();
   to.push(clone(state));
   state = from.pop();
   if (before !== removalKey(state)) showPage(pageNo, true);
@@ -258,6 +278,7 @@ $("dialog").addEventListener("close", () => {
 });
 function setTool(t) {
   if (busy || !pdf) return;
+  clearTracking();
   if (drag?.kind === "entity") state = drag.before;
   drag = null;
   tool = t;
@@ -590,25 +611,39 @@ function paint() {
         "stroke-dasharray": `${4 / zoom} ${4 / zoom}`,
       });
   }
+  if (tool !== "select") {
+    for (const guide of aidGuides)
+      svg("line", {
+        x1: guide.a.x,
+        y1: guide.a.y,
+        x2: guide.b.x,
+        y2: guide.b.y,
+        stroke: guide.polar ? "#398b61" : "#5592a4",
+        "stroke-width": 1 / zoom,
+        "stroke-dasharray": `${6 / zoom} ${4 / zoom}`,
+        "pointer-events": "none",
+      });
+    if (otrack)
+      for (const p of trackingAnchors)
+        svg("path", {
+          d: `M ${p.x - 3 / zoom} ${p.y} h ${6 / zoom} M ${p.x} ${p.y - 3 / zoom} v ${6 / zoom}`,
+          stroke: "#5592a4",
+          "stroke-width": 1 / zoom,
+          "pointer-events": "none",
+        });
+  }
   if (snapHit && hover && tool !== "select") {
-    svg("rect", {
-      x: hover.x - 4 / zoom,
-      y: hover.y - 4 / zoom,
-      width: 8 / zoom,
-      height: 8 / zoom,
-      fill: "white",
-      stroke: "#c48b24",
-      "stroke-width": 1.5 / zoom,
-      "pointer-events": "none",
-    });
-    const label = svg("text", {
-      x: hover.x + 10 / zoom,
-      y: hover.y - 10 / zoom,
-      fill: "#896318",
-      "font-size": 11 / zoom,
-      "pointer-events": "none",
-    });
-    label.textContent = snapHit.kind;
+    const p = snapHit.point,
+      r = 4 / zoom,
+      attrs = {
+        fill: "white",
+        stroke: "#c48b24",
+        "stroke-width": 1.5 / zoom,
+        "pointer-events": "none",
+      };
+    if (snapHit.kind === "Centrum")
+      svg("circle", { cx: p.x, cy: p.y, r, ...attrs });
+    else svg("path", { d: snapSymbol(snapHit.kind, p.x, p.y, r), ...attrs });
   }
   if (hover && tool !== "select") {
     svg("path", {
@@ -673,6 +708,14 @@ function refresh() {
   $("delete").disabled = !current();
   $("editText").disabled =
     !current() || !["text", "leader", "replace"].includes(current().type);
+  for (const [id, on, label] of [
+    ["polar", polar, "POLAR · F10"],
+    ["otrack", otrack, "OTRACK · F11"],
+  ]) {
+    $(id).textContent = `${label} · ${on ? "PÅ" : "AV"}`;
+    $(id).classList.toggle("active", on);
+    $(id).setAttribute("aria-pressed", String(on));
+  }
   $("ortho").textContent = `ORTHO ${ortho ? "PÅ" : "AV"} · F8`;
   $("ortho").classList.toggle("active", ortho);
   $("snap").classList.toggle("active", snap);
@@ -756,6 +799,7 @@ async function showPage(n, keepView = false) {
     return;
   if (drag?.kind === "entity") state = drag.before;
   drag = null;
+  clearTracking();
   const token = ++epoch;
   busy = true;
   pdfSegments = [];
@@ -995,13 +1039,20 @@ function localPoint(ev, constrained = true) {
     x: (ev.clientX - r.left - pan.x) / zoom,
     y: (ev.clientY - r.top - pan.y) / zoom,
   };
-  if (
+  const drawing =
     constrained &&
-    points.length &&
-    ortho &&
-    ["line", "leader", "dim"].includes(tool)
-  )
-    p = constrain(points.at(-1), p, true);
+    tool !== "select" &&
+    ![
+      "mask",
+      "replace",
+      "extract",
+      "coverLine",
+      "eraseLine",
+      "viewport",
+    ].includes(tool) &&
+    !space;
+  const rawPointer = { ...p };
+  aidGuides = [];
   snapHit = null;
   if (constrained && snap && !["mask", "replace", "extract"].includes(tool)) {
     const raw = { ...p };
@@ -1009,14 +1060,36 @@ function localPoint(ev, constrained = true) {
     for (const e of pageEntities().filter(
       (e) => e.id !== drag?.id && e.type !== "pdfErase",
     ))
-      for (const q of e.points) {
+      for (const [index, q] of e.points.entries()) {
         const d = distance(raw, q);
         if (d < best) {
           best = d;
           p = { ...q };
-          snapHit = { point: p, kind: "Objekt" };
+          snapHit = {
+            point: p,
+            kind:
+              e.type === "circle" && index === 0
+                ? "Centrum"
+                : e.type === "line" || e.type === "leader"
+                  ? "Ändpunkt"
+                  : "Objekt",
+          };
         }
       }
+    const ownSegments = pageEntities()
+      .filter(
+        (e) => e.id !== drag?.id && ["line", "rect", "leader"].includes(e.type),
+      )
+      .flatMap((e) =>
+        primitives(e, 1)
+          .filter((p) => p.kind === "line")
+          .map((p) => ({ a: p.a, b: p.b })),
+      );
+    const ownHit = nearestSnap(raw, ownSegments, best);
+    if (ownHit) {
+      p = ownHit.point;
+      snapHit = ownHit;
+    }
     if (!snapHit) {
       const hit = nearestSnap(raw, pdfSegments, 9 / zoom);
       if (hit) {
@@ -1038,6 +1111,48 @@ function localPoint(ev, constrained = true) {
       }
     }
   }
+  if (drawing && otrack && snap) {
+    trackingAnchors = tracker.update(snapHit, performance.now());
+    clearTimeout(trackTimer);
+    if (snapHit && snapHit.kind !== "Linje") {
+      const heldHit = snapHit;
+      trackTimer = setTimeout(() => {
+        if (!otrack || !snap || tool === "select") return;
+        trackingAnchors = tracker.update(heldHit, performance.now());
+        paint();
+      }, 470);
+    }
+  }
+  if (drawing && !snapHit) {
+    const origin = points.at(-1);
+    if (origin && ortho && ["line", "leader", "dim"].includes(tool))
+      p = constrain(origin, rawPointer, true);
+    else {
+      const polarHit =
+        origin && polar && ["line", "leader", "dim", "circle"].includes(tool)
+          ? polarPoint(origin, rawPointer, polarAngle)
+          : null;
+      if (polarHit) {
+        p = polarHit.point;
+        aidGuides = [
+          {
+            a: origin,
+            b: {
+              x: p.x + (Math.cos(polarHit.angle) * 40) / zoom,
+              y: p.y + (Math.sin(polarHit.angle) * 40) / zoom,
+            },
+            polar: true,
+          },
+        ];
+      } else if (otrack && snap) {
+        const tracked = trackingPoint(rawPointer, trackingAnchors, 8 / zoom);
+        if (tracked) {
+          p = tracked.point;
+          aidGuides = tracked.guides;
+        }
+      }
+    }
+  }
   return p;
 }
 async function addPoint(p) {
@@ -1053,6 +1168,7 @@ async function addPoint(p) {
     refresh();
     return;
   }
+  clearTracking();
   const type = tool,
     ps = clone(points);
   points = [];
@@ -1336,6 +1452,10 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
     drag = { kind: "area" };
     $("viewport").setPointerCapture(ev.pointerId);
   } else addPoint(p);
+});
+$("viewport").addEventListener("pointerleave", () => {
+  clearTimeout(trackTimer);
+  if (otrack) trackingAnchors = tracker.update(null, performance.now());
 });
 $("viewport").addEventListener("pointermove", (ev) => {
   if (!viewport) return;
@@ -1688,10 +1808,33 @@ $("calibrate").onclick = () => setTool("calibrate");
 $("replace").onclick = () => setTool("replace");
 $("ortho").onclick = () => {
   ortho = !ortho;
+  if (ortho) polar = false;
+  clearTracking();
   refresh();
 };
 $("snap").onclick = () => {
   snap = !snap;
+  clearTracking();
+  refresh();
+};
+$("polar").onclick = () => {
+  polar = !polar;
+  if (polar) ortho = false;
+  clearTracking();
+  refresh();
+};
+$("otrack").onclick = () => {
+  otrack = !otrack;
+  clearTracking();
+  refresh();
+  if (otrack)
+    toast(
+      "Håll pekaren över en snappunkt en kort stund. Följ sedan dess vågräta eller lodräta hjälplinje.",
+    );
+};
+$("polarAngle").onchange = () => {
+  polarAngle = Number($("polarAngle").value);
+  clearTracking();
   refresh();
 };
 const aliases = {
@@ -1738,7 +1881,7 @@ $("command").addEventListener("keydown", (ev) => {
       toast(
         "Kalibrera pappret eller börja i en viewport för att ange längder i mm.",
       );
-    else addPoint(constrain(points[0], hover, ortho, number, activeScale));
+    else addPoint(constrain(points[0], hover, false, number, activeScale));
   } else toast("Okänt kommando. Skriv HJÄLP för att se alla kommandon.");
   ev.target.blur();
 });
@@ -1749,9 +1892,10 @@ window.addEventListener("keydown", (ev) => {
     $("blockLibrary").open
   )
     return;
-  const typing = /INPUT|TEXTAREA/.test(ev.target.tagName);
+  const typing = /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName);
   if (ev.key === "Escape") {
     $("fileMenu").open = false;
+    clearTracking();
     if (pendingDialog) return;
     if (drag?.kind === "entity") state = drag.before;
     drag = null;
@@ -1772,8 +1916,12 @@ window.addEventListener("keydown", (ev) => {
   }
   if (ev.key === "F8") {
     ev.preventDefault();
-    ortho = !ortho;
-    refresh();
+    $("ortho").click();
+  }
+  if (ev.key === "F10" || ev.key === "F11") {
+    ev.preventDefault();
+    $(ev.key === "F10" ? "polar" : "otrack").click();
+    return;
   }
   if (ev.key === " ") {
     ev.preventDefault();
