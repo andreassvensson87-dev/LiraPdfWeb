@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LiraPDF</title>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="#" aria-label="LiraPDF"
+        ><b>L</b><strong>Lira<span>PDF</span></strong></a
+      >
+      <details id="fileMenu" class="file-menu">
+        <summary>Arkiv <span>⌄</span></summary>
+        <div class="menu-panel">
+          <button id="open">Öppna PDF…</button
+          ><button id="projectOpen">Öppna projekt…</button>
+          <hr />
+          <button id="demo">Öppna exempelritning</button>
+        </div>
+      </details>
+      <div class="filename" id="filename">Exempelritning.pdf</div>
+      <button id="save" title="Spara redigerbart LiraPDF-projekt">
+        Spara projekt</button
+      ><button class="primary" id="export">Exportera PDF</button>
+    </header>
+    <div class="tool-tabs" role="tablist" aria-label="Verktygskategorier">
+      <button
+        id="createTab"
+        role="tab"
+        data-category="create"
+        aria-selected="true"
+        aria-controls="toolRibbon"
+      >
+        Skapa</button
+      ><button
+        id="editTab"
+        role="tab"
+        data-category="edit"
+        aria-selected="false"
+        aria-controls="toolRibbon"
+      >
+        Redigera</button
+      ><button
+        id="measureTab"
+        role="tab"
+        data-category="measure"
+        aria-selected="false"
+        aria-controls="toolRibbon"
+      >
+        Mått
+      </button>
+    </div>
+    <nav
+      id="toolRibbon"
+      role="tabpanel"
+      aria-labelledby="createTab"
+      class="ribbon"
+      aria-label="Ritverktyg"
+    >
+      <button
+        class="icon-button"
+        id="togglePages"
+        title="Visa eller dölj dokument"
+        aria-label="Visa eller dölj dokument"
+        aria-expanded="true"
+        aria-controls="pagePanel"
+      >
+        <svg viewBox="0 0 24 24">
+          <rect x="4" y="3" width="16" height="18" rx="2" />
+          <path d="M4 9h16" />
+        </svg>
+      </button>
+      <div class="history">
+        <button id="undo" title="Ångra (⌘Z)" aria-label="Ångra">
+          <svg viewBox="0 0 24 24">
+            <path d="m8 5-5 5 5 5M3 10h10a7 7 0 0 1 7 7" />
+          </svg></button
+        ><button id="redo" title="Gör om (⌘⇧Z)" aria-label="Gör om">
+          <svg viewBox="0 0 24 24">
+            <path d="m16 5 5 5-5 5m5-5H11a7 7 0 0 0-7 7" />
+          </svg>
+        </button>
+      </div>
+      <div id="tools"></div>
+      <button
+        id="replace"
+        title="Läs PDF-text i ett område och täck med ersättningstext. Originalet finns kvar."
+      >
+        Ersätt text
+      </button>
+      <button
+        id="measureCalibrate"
+        hidden
+        title="Välj två punkter och ange känt avstånd"
+      >
+        Kalibrera
+      </button>
+      <div class="viewtools">
+        <button id="fit" title="Anpassa PDF-sidan">Anpassa</button
+        ><button
+          id="fitAll"
+          title="Visa sidan och alla objekt, även utanför sidkanten (ZE)"
+        >
+          Visa allt</button
+        ><button id="zoomOut" aria-label="Zooma ut">−</button
+        ><span id="zoom">100%</span
+        ><button id="zoomIn" aria-label="Zooma in">+</button>
+      </div>
+    </nav>
+    <div class="properties" aria-label="Verktygsegenskaper">
+      <strong id="toolname">Markera</strong>
+      <div id="styleControls">
+        <label
+          >Färg<input
+            id="color"
+            aria-label="Färg"
+            type="color"
+            value="#147b60" /></label
+        ><label id="lineControl"
+          >Linje<input
+            id="width"
+            aria-label="Linjebredd i pt"
+            type="number"
+            min="0.2"
+            max="20"
+            step="0.2"
+            value="1.2"
+          /><span>pt</span></label
+        ><label id="textControl"
+          >Text<input
+            id="fontSize"
+            aria-label="Textstorlek i pt"
+            type="number"
+            min="4"
+            max="96"
+            value="12"
+          /><span>pt</span></label
+        >
+      </div>
+      <div id="blockControls" hidden>
+        <label
+          >Storlek
+          <input
+            id="blockSize"
+            type="number"
+            min="1"
+            max="10000"
+            step="1"
+            aria-label="Blockstorlek i procent"
+          />
+          %</label
+        >
+        <label
+          >Rotation
+          <input
+            id="blockRotation"
+            type="number"
+            step="15"
+            aria-label="Blockrotation i grader"
+          />
+          °</label
+        >
+        <button id="copyBlock">Kopiera block</button>
+        <button id="saveLibraryBlock">Spara i bibliotek</button>
+      </div>
+      <span id="selectionHint"
+        >Välj ett verktyg eller ett objekt i ritningen</span
+      ><button id="editText">Redigera text</button
+      ><button id="delete">Ta bort</button>
+      <div class="scale">
+        <span id="scaleLabel">Ej kalibrerad</span
+        ><button id="calibrate">Kalibrera</button>
+      </div>
+    </div>
+    <main>
+      <aside class="page-strip" id="pagePanel" aria-label="Öppna dokument">
+        <button
+          id="allDocuments"
+          class="all-documents"
+          aria-haspopup="dialog"
+          aria-controls="documentPicker"
+          aria-label="Sök bland öppna dokument"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16M4 12h16M4 18h16" /></svg
+          ><span id="pagecount">1</span><span aria-hidden="true">⌄</span>
+        </button>
+        <div id="pages" role="tablist" aria-label="Dokument"></div>
+        <div class="page-navigation">
+          <button id="prevPage" aria-label="Föregående sida">‹</button
+          ><label
+            >Sida
+            <input
+              id="pageNumber"
+              type="number"
+              min="1"
+              value="1"
+              aria-label="Aktuell sida" /></label
+          ><span id="pageTotal">av 1</span
+          ><button id="nextPage" aria-label="Nästa sida">›</button>
+        </div>
+      </aside>
+      <section class="workspace">
+        <div id="viewport">
+          <div id="emptyWorkspace" hidden>
+            <strong>Inget dokument öppet</strong
+            ><button id="emptyOpen">Öppna PDF</button>
+          </div>
+          <div id="sheet">
+            <canvas id="pdfcanvas"></canvas
+            ><svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+          </div>
+        </div>
+        <div class="command">
+          <span>›</span
+          ><input
+            id="command"
+            aria-label="Kommando eller längd"
+            placeholder="Skriv ett kommando…"
+            autocomplete="off"
+          />
+          <strong id="prompt">Välj verktyg eller skriv ett kommando</strong
+          ><kbd>ESC</kbd>
+        </div>
+      </section>
+    </main>
+    <footer>
+      <span id="saveStatus">Redo</span>
+      <span id="pageLabel">Sida 1</span><span id="coords">X 0 · Y 0</span>
+      <div class="footer-actions">
+        <button id="ortho">ORTHO AV · F8</button
+        ><button id="snap" class="active">SNAPP PÅ</button>
+      </div>
+    </footer>
+    <input
+      hidden
+      type="file"
+      id="pdfInput"
+      multiple
+      accept="application/pdf,.pdf"
+    /><input
+      hidden
+      type="file"
+      id="projectInput"
+      accept=".lirapdf,application/json"
+    />
+    <input id="blockInput" type="file" accept="application/pdf,.pdf" hidden />
+    <dialog id="dialog">
+      <form method="dialog">
+        <div class="paneltitle" id="dialogTitle">Text</div>
+        <p id="dialogHelp"></p>
+        <textarea id="textInput" rows="5" aria-label="Text"></textarea
+        ><input
+          id="numberInput"
+          type="number"
+          min="0.001"
+          step="any"
+          aria-label="Känt avstånd i millimeter"
+        />
+        <div class="dialogactions">
+          <button type="button" id="cancelDialog">Avbryt</button
+          ><button class="primary" value="ok">Bekräfta</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="blockLibrary" aria-labelledby="blockLibraryTitle">
+      <div class="picker-heading">
+        <strong id="blockLibraryTitle">Blockbibliotek</strong
+        ><button id="closeBlockLibrary" aria-label="Stäng blockbibliotek">
+          ×
+        </button>
+      </div>
+      <p id="blockLibraryHint"></p>
+      <div class="block-library-actions">
+        <input
+          id="blockSearch"
+          type="search"
+          placeholder="Sök block…"
+          aria-label="Sök block"
+        /><button id="importLibraryBlock" class="primary">Importera PDF</button>
+      </div>
+      <p id="blockLibraryCount" role="status"></p>
+      <div id="blockLibraryGrid"></div>
+      <p id="blockLibraryEmpty"></p>
+      <p class="library-storage-note">
+        Biblioteket sparas lokalt i den här webbläsaren, separat från dina
+        dokument.
+      </p>
+    </dialog>
+    <dialog id="documentPicker" aria-labelledby="documentPickerTitle">
+      <div class="picker-heading">
+        <strong id="documentPickerTitle">Öppna dokument</strong
+        ><button id="closeDocumentPicker" aria-label="Stäng dokumentlistan">
+          ×
+        </button>
+      </div>
+      <input
+        id="documentSearch"
+        type="search"
+        placeholder="Sök dokument…"
+        aria-label="Sök öppna dokument"
+        autocomplete="off"
+      />
+      <div id="documentMatches" role="status"></div>
+      <div id="documentResults" aria-label="Sökresultat"></div>
+    </dialog>
+    <dialog id="closeDocumentDialog" aria-labelledby="closeDocumentTitle">
+      <form method="dialog">
+        <strong id="closeDocumentTitle"
+          >Spara ändringar innan du stänger?</strong
+        >
+        <p id="closeDocumentName"></p>
+        <p>Spara en projektfil för att behålla dina ändringar.</p>
+        <div class="dialogactions">
+          <button value="cancel" autofocus>Avbryt</button>
+          <button value="discard">Stäng utan att spara</button>
+          <button value="save" class="primary">Spara och stäng</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" role="status" hidden></div>
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>

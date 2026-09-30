@@ -1,0 +1,23 @@
+{
+  "name": "lirapdf-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5178",
+    "build": "node scripts/prepare-pdf-assets.mjs && vite build",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check src/app.js && node --test tests/*.test.js && node scripts/prepare-pdf-assets.mjs && vite build",
+    "format": "prettier --write src tests index.html",
+    "format:check": "prettier --check src tests index.html",
+    "predev": "node scripts/prepare-pdf-assets.mjs"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "5.7.284"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.9",
+    "vite": "^7.1.0"
+  }
+}
