@@ -15,7 +15,8 @@ Ritningen fyller arbetsytan. Verktygsegenskaper visas i raden ovanför ritningen
 ## Verktygsflikar
 
 - **Skapa:** linje, cirkel, rektangel, båge, text och leader.
-- **Redigera:** maskning, textersättning och Hämta linje.
+- **Redigera:** verktyg för att flytta, kopiera, trimma och ändra ritade objekt.
+- **PDF:** maskning, textersättning och redigering av PDF-underlaget.
 - **Mått:** måttsättning och kalibrering.
 
 Markera, ångra/gör om och zoom är alltid tillgängliga. Kommandon öppnar rätt verktygsflik automatiskt. Byte av verktygsflik avbryter pågående verktyg.
@@ -98,7 +99,7 @@ Tillagda objekt visas och kan markeras även utanför PDF-sidans kant. Dra dem t
 
 ## Täck eller ta bort PDF-linjer
 
-Under **Redigera** finns två separata verktyg:
+Under **PDF** finns två separata verktyg:
 
 - **Täck linje** (`COVERLINE`) lägger en vit linje över vald PDF-linje. Justera bredden efteråt. Den kan täcka annat innehåll vid korsningar; originalinnehållet finns kvar.
 - **Ta bort PDF-linje** (`ERASELINE`) tar bort ritoperationen för ett fristående rakt streck. Ändringen visas i arbetsytan, sparas i projektet och tillämpas vid PDF-export. Ångra/gör om återställer eller tillämpar borttagningen.
@@ -137,3 +138,25 @@ Under **Redigera** finns **Flytta (M/MOVE)**, **Kopiera (CO/COPY)** och **Offset
 - PDF-underlagets linjer hämtas först med **Hämta linje**. Det ger en redigerbar kopia; originalet ligger kvar tills du använder Täck linje eller Ta bort PDF-linje.
 
 Viewportens namn och skala visas enbart under rutan, när visningen är aktiverad.
+
+## Ritredigering och PDF-verktyg
+
+**Redigera** innehåller verktygen för ritade objekt. **PDF** samlar Maska, Hämta linje, Täck linje, Ta bort PDF-linje och Ersätt text.
+
+| Verktyg                | Kommando      | Arbetsgång                                                                                                       |
+| ---------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Trimma                 | TR / TRIM     | Välj gränser, Enter, klicka delen som ska bort. Enter utan val använder alla raka konturer på sidan som gränser. |
+| Förläng                | EX / EXTEND   | Välj gränser, Enter, klicka nära linjeänden. Förlänger till närmaste gräns i den riktningen.                     |
+| Rotera                 | RO / ROTATE   | Välj objekt, Enter, välj baspunkt och riktning eller ange grader. Positiva grader är moturs.                     |
+| Skala                  | SC / SCALE    | Välj objekt, Enter, välj baspunkt och skriv skalfaktor. Faktor 2 fördubblar geometrin.                           |
+| Spegla                 | MI / MIRROR   | Välj objekt, Enter och välj två punkter på spegelaxeln. Skapar speglade kopior och behåller originalen.          |
+| Radera                 | E / ERASE     | Välj objekt och tryck Enter. Kan ångras.                                                                         |
+| Sammanfoga             | J / JOIN      | Välj sammanhängande linjer eller öppna polylinjer, Enter. Objekten måste tillhöra samma viewport/papper.         |
+| Dela upp               | X / EXPLODE   | Välj rektanglar eller polylinjer, Enter. Skapar separata linjer.                                                 |
+| Avrunda                | F / FILLET    | Ange radie i mm, klicka två linjer på sidorna som ska behållas. Radie 0 ger skarpt hörn.                         |
+| Fasa                   | CHA / CHAMFER | Ange lika fasavstånd i mm längs båda linjerna och klicka sidorna som ska behållas.                               |
+| Lägg till/ta bort hörn | PI / PD       | Välj en rektangel eller polylinje, Enter, klicka vid önskat segment/hörn.                                        |
+
+Trimma/Förläng ändrar raka linjer mot gränser av linjer, rektanglar eller raka polylinjer. Dela upp en kontur med X före trimning. Kurvor är ännu inte gränser i dessa två verktyg. Sammanfoga arbetar med raka segment. Rotera, Skala och Spegla stöder linjer, cirklar, rektanglar, bågar och raka polylinjer; roterade/speglade rektanglar blir polylinjer. Text, mått och PDF-block ingår inte i dessa tre verktyg. Linjebredder behåller sin pappersstorlek. Skala ändrar objektens verkliga storlek, medan viewportskala ändrar visningsskalan.
+
+Ändringar sparas i projekt och PDF-export. Escape avbryter pågående val; varje genomförd åtgärd kan ångras.

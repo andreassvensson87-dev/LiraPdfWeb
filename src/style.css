@@ -1048,3 +1048,19 @@ dialog input {
   border-radius: 5px;
   background: white;
 }
+
+#tools {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.ribbon .history,
+.ribbon > .icon-button,
+.ribbon .viewtools {
+  flex-shrink: 0;
+}
+.tool[data-tool="trim"],
+.tool[data-tool="join"],
+.tool[data-tool="fillet"] {
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+}

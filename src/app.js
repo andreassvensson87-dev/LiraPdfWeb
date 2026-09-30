@@ -1,4 +1,47 @@
 import {
+  transformEntity,
+  joinEntities,
+  explodeEntity,
+  vertexEdit,
+  trimLine,
+  cornerLines,
+} from "./advanced-editing.js";
+const transformTools = [
+  "move",
+  "copy",
+  "offset",
+  "rotate",
+  "scale",
+  "mirror",
+  "erase",
+  "join",
+  "explode",
+  "trim",
+  "extend",
+  "fillet",
+  "chamfer",
+  "pinsert",
+  "pdelete",
+];
+function editTypes(t) {
+  if (t === "offset") return offsetTypes;
+  if (["rotate", "scale", "mirror"].includes(t))
+    return ["line", "circle", "rect", "arc", "polyline"];
+  if (["trim", "extend"].includes(t)) return ["line", "rect", "polyline"];
+  if (t === "join") return ["line", "polyline"];
+  if (["explode", "pinsert", "pdelete"].includes(t))
+    return ["rect", "polyline"];
+  if (["fillet", "chamfer"].includes(t)) return ["line"];
+  return editableTypes;
+}
+function editPhase(t) {
+  if (["offset", "fillet", "chamfer"].includes(t)) return "distance";
+  if (["trim", "extend"].includes(t)) return "cut";
+  if (["pinsert", "pdelete"].includes(t)) return "vertex";
+  if (["erase", "join", "explode"].includes(t)) return "select";
+  return "base";
+}
+import {
   editableTypes,
   offsetTypes,
   translateEntity,
@@ -72,12 +115,36 @@ const tools = [
   ["move", "", "Flytta", "M"],
   ["copy", "", "Kopiera", "CO"],
   ["offset", "", "Offset", "O"],
+  ["rotate", "", "Rotera", "RO"],
+  ["scale", "", "Skala", "SC"],
+  ["mirror", "", "Spegla", "MI"],
+  ["trim", "", "Trimma", "TR"],
+  ["extend", "", "Förläng", "EX"],
+  ["erase", "", "Radera", "E"],
+  ["join", "", "Sammanfoga", "J"],
+  ["explode", "", "Dela upp", "X"],
+  ["fillet", "", "Avrunda", "F"],
+  ["chamfer", "", "Fasa", "CHA"],
+  ["pinsert", "", "Lägg till hörn", "PI"],
+  ["pdelete", "", "Ta bort hörn", "PD"],
   ["mask", "▧", "Maska", "MASK"],
   ["extract", "", "Hämta linje", "GETLINE"],
   ["coverLine", "", "Täck linje", "COVERLINE"],
   ["eraseLine", "", "Ta bort PDF-linje", "ERASELINE"],
 ];
 const toolCategories = {
+  rotate: "edit",
+  scale: "edit",
+  mirror: "edit",
+  trim: "edit",
+  extend: "edit",
+  erase: "edit",
+  join: "edit",
+  explode: "edit",
+  fillet: "edit",
+  chamfer: "edit",
+  pinsert: "edit",
+  pdelete: "edit",
   move: "edit",
   copy: "edit",
   offset: "edit",
@@ -88,11 +155,11 @@ const toolCategories = {
   arc: "create",
   text: "create",
   leader: "create",
-  mask: "edit",
-  extract: "edit",
-  coverLine: "edit",
-  eraseLine: "edit",
-  replace: "edit",
+  mask: "pdf",
+  extract: "pdf",
+  coverLine: "pdf",
+  eraseLine: "pdf",
+  replace: "pdf",
   viewport: "measure",
   dim: "measure",
   calibrate: "measure",
@@ -110,7 +177,7 @@ function showCategory(category) {
     b.hidden =
       b.dataset.tool !== "select" &&
       toolCategories[b.dataset.tool] !== category;
-  $("replace").hidden = category !== "edit";
+  $("replace").hidden = category !== "pdf";
   $("measureCalibrate").hidden = category !== "measure";
 }
 for (const button of document.querySelectorAll("[data-category]")) {
@@ -135,7 +202,11 @@ for (const button of document.querySelectorAll("[data-category]")) {
   };
 }
 const names = Object.fromEntries(tools.map((t) => [t[0], t[2]]));
-Object.assign(names, { calibrate: "Kalibrera", replace: "Täck och ersätt" });
+Object.assign(names, {
+  polyline: "Polylinje",
+  calibrate: "Kalibrera",
+  replace: "Täck och ersätt",
+});
 let state = { entities: [], scales: {} },
   pdf,
   bytes,
@@ -296,19 +367,19 @@ $("dialog").addEventListener("close", () => {
 function setTool(t) {
   if (busy || !pdf) return;
   const previous = current();
-  editOperation = ["move", "copy", "offset"].includes(t)
+  editOperation = transformTools.includes(t)
     ? {
         ids:
-          previous &&
-          (t === "offset" ? offsetTypes : editableTypes).includes(previous.type)
-            ? [previous.id]
-            : [],
+          previous && editTypes(t).includes(previous.type) ? [previous.id] : [],
         phase: "select",
         amount: null,
       }
     : null;
-  if (editOperation?.ids.length)
-    editOperation.phase = t === "offset" ? "distance" : "base";
+  if (editOperation?.ids.length) editOperation.phase = editPhase(t);
+  if (["fillet", "chamfer"].includes(t)) {
+    editOperation.ids = [];
+    editOperation.phase = "distance";
+  }
   clearTracking();
   if (drag?.kind === "entity") state = drag.before;
   drag = null;
@@ -326,6 +397,19 @@ for (const [id, icon, label, shortcut] of tools) {
   b.dataset.tool = id;
   b.title = `${label} (${shortcut})`;
   const paths = {
+    rotate: '<path d="M5 8a8 8 0 1 1-1 9M5 3v5h5"/>',
+    scale:
+      '<rect x="3" y="13" width="8" height="8"/><path d="M3 9V3h18v18h-6M12 12l7-7m-5 0h5v5"/>',
+    mirror: '<path d="M12 2v20M8 5 2 19h6ZM16 5l6 14h-6Z"/>',
+    trim: '<path d="M8 2v20M16 2v20M2 12h6m8 0h6m-12-3 4 6m0-6-4 6"/>',
+    extend: '<path d="M19 3v18M2 12h17m-5-4 5 4-5 4"/>',
+    erase: '<path d="m3 15 10-12 8 7-10 12H8ZM8 10l8 7"/>',
+    join: '<path d="M2 16h8v-8h12M7 12l3 4 3-4"/>',
+    explode: '<path d="M3 9V3h6m6 0h6v6m0 6v6h-6m-6 0H3v-6"/>',
+    fillet: '<path d="M3 21V11a8 8 0 0 1 8-8h10"/>',
+    chamfer: '<path d="M3 21V11l8-8h10"/>',
+    pinsert: '<path d="M2 20 12 6l10 14M12 2v8M8 6h8"/>',
+    pdelete: '<path d="M2 20h20M8 6h8"/>',
     move: '<path d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4"/>',
     copy: '<rect x="8" y="8" width="12" height="12"/><path d="M5 16H3V3h13v2"/>',
     offset: '<path d="M3 20V4h16M8 20V9h11M13 20v-6h6"/>',
@@ -411,10 +495,34 @@ function prompt() {
   const editPrompt =
     editOperation &&
     {
-      select: `Välj objekt (${editOperation.ids.length}) · Enter fortsätter`,
-      base: "Ange baspunkt",
-      target: "Ange målpunkt eller skriv avstånd i mm",
-      distance: "Ange offsetavstånd i mm",
+      select: `${["trim", "extend"].includes(tool) ? "Välj gränser" : "Välj objekt"} (${editOperation.ids.length}) · Enter fortsätter`,
+      base:
+        tool === "mirror" ? "Ange spegelaxelns första punkt" : "Ange baspunkt",
+      target:
+        tool === "rotate"
+          ? "Ange riktning eller vinkel i grader"
+          : tool === "scale"
+            ? "Ange positiv skalfaktor, t.ex. 2"
+            : tool === "mirror"
+              ? "Ange spegelaxelns andra punkt · originalet behålls"
+              : "Ange målpunkt eller skriv avstånd i mm",
+      distance:
+        tool === "fillet"
+          ? "Ange radie i mm (0 ger skarpt hörn)"
+          : tool === "chamfer"
+            ? "Ange fasavstånd i mm"
+            : "Ange offsetavstånd i mm",
+      cut:
+        tool === "trim"
+          ? "Klicka på linjedelen som ska bort · Esc avslutar"
+          : "Klicka nära linjeänden som ska förlängas · Esc avslutar",
+      corner: editOperation.first
+        ? "Välj andra linjen på sidan som ska behållas"
+        : "Välj första linjen på sidan som ska behållas",
+      vertex:
+        tool === "pinsert"
+          ? "Klicka för att lägga till hörn"
+          : "Klicka på hörnet som ska tas bort",
       side: "Klicka på önskad sida · Esc avslutar",
     }[editOperation.phase];
   const next = `${editPrompt || steps[tool]?.[points.length] || "Välj punkt"} · ${scaleText}`;
@@ -1141,7 +1249,9 @@ function localPoint(ev, constrained = true) {
       }
     const ownSegments = pageEntities()
       .filter(
-        (e) => e.id !== drag?.id && ["line", "rect", "leader"].includes(e.type),
+        (e) =>
+          e.id !== drag?.id &&
+          ["line", "rect", "leader", "polyline"].includes(e.type),
       )
       .flatMap((e) =>
         primitives(e, 1)
@@ -1506,10 +1616,7 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
     if (editOperation.phase === "select") {
       const id = ev.target.closest("[data-id]")?.dataset.id;
       const e = state.entities.find((e) => e.id === id);
-      if (
-        !e ||
-        !(tool === "offset" ? offsetTypes : editableTypes).includes(e.type)
-      ) {
+      if (!e || !editTypes(tool).includes(e.type)) {
         toast(
           tool === "offset"
             ? "Välj en ritad linje, cirkel eller rektangel."
@@ -1518,9 +1625,17 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
         return;
       }
       const i = editOperation.ids.indexOf(id);
-      if (i < 0) editOperation.ids.push(id);
-      else editOperation.ids.splice(i, 1);
+      if (i < 0) {
+        if (["pinsert", "pdelete"].includes(tool)) editOperation.ids = [];
+        editOperation.ids.push(id);
+      } else editOperation.ids.splice(i, 1);
       refresh();
+    } else if (["cut", "corner", "vertex"].includes(editOperation.phase)) {
+      try {
+        advancedPick(p, ev.target.closest("[data-id]")?.dataset.id);
+      } catch (e) {
+        error(e);
+      }
     } else editPoint(p);
     return;
   }
@@ -1963,6 +2078,74 @@ $("polarAngle").onchange = () => {
   clearTracking();
   refresh();
 };
+function finishSelection() {
+  const es = editOperation.ids.map((id) =>
+    state.entities.find((e) => e.id === id),
+  );
+  if (!es.length) throw Error("Välj minst ett objekt först.");
+  const next = clone(state);
+  next.entities = next.entities.filter(
+    (e) => !editOperation.ids.includes(e.id),
+  );
+  if (tool === "join") next.entities.push(joinEntities(es));
+  if (tool === "explode")
+    for (const e of es)
+      next.entities.push(
+        ...explodeEntity(e).map((n) => ({ ...n, id: crypto.randomUUID() })),
+      );
+  commit(next);
+  setTool("select");
+}
+function advancedPick(p, id) {
+  const e = state.entities.find((e) => e.id === id),
+    next = clone(state);
+  if (editOperation.phase === "cut") {
+    if (!e) throw Error("Klicka på en ritad linje.");
+    const result = trimLine(
+      e,
+      state.entities.filter((x) => editOperation.ids.includes(x.id)),
+      p,
+      tool === "extend",
+    );
+    next.entities = next.entities.filter((x) => x.id !== id);
+    next.entities.push(
+      ...result.map((x, i) => ({ ...x, id: i ? crypto.randomUUID() : id })),
+    );
+  } else if (editOperation.phase === "vertex") {
+    const source = state.entities.find((e) => e.id === editOperation.ids[0]);
+    const n = vertexEdit(source, p, tool === "pdelete");
+    next.entities[next.entities.findIndex((e) => e.id === source.id)] = n;
+  } else {
+    if (!e || e.type !== "line") throw Error("Välj en rak linje.");
+    if (!editOperation.first) {
+      editOperation.first = { id, p };
+      refresh();
+      return;
+    }
+    const first = state.entities.find((x) => x.id === editOperation.first.id);
+    if (first.viewportId !== e.viewportId)
+      throw Error("Linjerna måste tillhöra samma viewport eller papper.");
+    const scale = entityScale(e, state.entities, state.scales);
+    if (!scale)
+      throw Error("Kalibrera pappret eller använd en viewport först.");
+    const result = cornerLines(
+      first,
+      e,
+      editOperation.first.p,
+      p,
+      editOperation.amount / scale,
+      tool === "fillet",
+    );
+    for (const n of result.updated)
+      next.entities[next.entities.findIndex((x) => x.id === n.id)] = n;
+    if (result.bridge)
+      next.entities.push({ ...result.bridge, id: crypto.randomUUID() });
+    editOperation.first = null;
+  }
+  commit(next);
+  clearTracking();
+  refresh();
+}
 function editedEntities(p) {
   return editOperation.ids.map((id) => {
     const e = state.entities.find((e) => e.id === id);
@@ -1972,6 +2155,8 @@ function editedEntities(p) {
         throw Error("Kalibrera pappret eller använd en viewport först.");
       return offsetEntity(e, editOperation.amount / scale, p);
     }
+    if (["rotate", "scale", "mirror"].includes(tool))
+      return transformEntity(e, tool, points[0], p, editOperation.value);
     return translateEntity(e, points[0], p);
   });
 }
@@ -1983,16 +2168,20 @@ function editPoint(p) {
     return;
   }
   if (!["target", "side"].includes(editOperation.phase)) return;
+  if (tool === "scale" && editOperation.value === undefined) {
+    toast("Skriv en skalfaktor i kommandoraden.");
+    return;
+  }
   try {
     const edits = editedEntities(p),
       next = clone(state);
     for (const e of edits) {
-      if (tool === "move")
+      if (["move", "rotate", "scale"].includes(tool))
         next.entities[next.entities.findIndex((x) => x.id === e.id)] = e;
       else next.entities.push({ ...e, id: crypto.randomUUID() });
     }
     commit(next);
-    if (tool === "move") setTool("select");
+    if (["move", "rotate", "scale", "mirror"].includes(tool)) setTool("select");
     else {
       clearTracking();
       hover = null;
@@ -2004,13 +2193,30 @@ function editPoint(p) {
 }
 function editCommand(value, number) {
   if (editOperation.phase === "select") {
+    if (["erase", "join", "explode"].includes(tool)) {
+      try {
+        finishSelection();
+      } catch (e) {
+        error(e);
+      }
+      return;
+    }
+    if (!editOperation.ids.length && ["trim", "extend"].includes(tool))
+      editOperation.ids = pageEntities()
+        .filter((e) => editTypes(tool).includes(e.type))
+        .map((e) => e.id);
     if (!editOperation.ids.length) {
       toast("Välj minst ett objekt först.");
       return;
     }
-    editOperation.phase = tool === "offset" ? "distance" : "base";
+    editOperation.phase = editPhase(tool);
   } else if (editOperation.phase === "distance") {
-    if (!(number > 0) || !Number.isFinite(number)) {
+    if (
+      (["fillet", "chamfer"].includes(tool)
+        ? number < 0 || !value
+        : !(number > 0)) ||
+      !Number.isFinite(number)
+    ) {
       toast("Ange ett positivt avstånd i mm.");
       return;
     }
@@ -2028,8 +2234,28 @@ function editCommand(value, number) {
       return;
     }
     editOperation.amount = number;
-    editOperation.phase = "side";
-  } else if (editOperation.phase === "target" && number > 0 && hover) {
+    editOperation.phase = ["fillet", "chamfer"].includes(tool)
+      ? "corner"
+      : "side";
+  } else if (
+    editOperation.phase === "target" &&
+    ["rotate", "scale"].includes(tool) &&
+    value &&
+    Number.isFinite(number)
+  ) {
+    if (tool === "scale" && number <= 0) {
+      toast("Ange en positiv skalfaktor.");
+      return;
+    }
+    editOperation.value =
+      tool === "rotate" ? (-number * Math.PI) / 180 : number;
+    editPoint(hover || points[0]);
+  } else if (
+    editOperation.phase === "target" &&
+    number > 0 &&
+    hover &&
+    ["move", "copy"].includes(tool)
+  ) {
     const scales = editOperation.ids.map((id) =>
       entityScale(
         state.entities.find((e) => e.id === id),
@@ -2047,6 +2273,30 @@ function editCommand(value, number) {
   refresh();
 }
 const aliases = {
+  RO: "rotate",
+  ROTATE: "rotate",
+  SC: "scale",
+  SCALE: "scale",
+  MI: "mirror",
+  MIRROR: "mirror",
+  E: "erase",
+  ERASE: "erase",
+  TR: "trim",
+  TRIM: "trim",
+  EX: "extend",
+  EXTEND: "extend",
+  J: "join",
+  JOIN: "join",
+  X: "explode",
+  EXPLODE: "explode",
+  F: "fillet",
+  FILLET: "fillet",
+  CHA: "chamfer",
+  CHAMFER: "chamfer",
+  PI: "pinsert",
+  PINSERT: "pinsert",
+  PD: "pdelete",
+  PDELETE: "pdelete",
   M: "move",
   MOVE: "move",
   CO: "copy",
@@ -2080,7 +2330,7 @@ $("command").addEventListener("keydown", (ev) => {
     editCommand(value, number);
   else if (["HJÄLP", "HELP", "?"].includes(value.toUpperCase()))
     toast(
-      "M: flytta · CO: kopiera · O: offset · L: linje · C: cirkel · REC: rektangel · A: båge · T: text · LE: leader · BLOCK: blockbibliotek · DIM: mått · CAL: kalibrera · VP: viewport · MASK: maska · TEXTEDIT: ersätt text · GETLINE: kopiera PDF-linje · COVERLINE: täck linje · ERASELINE: ta bort PDF-linje · U: ångra · Z: anpassa · ZE: visa allt · Esc: avbryt",
+      "M: flytta · CO: kopiera · O: offset · RO: rotera · SC: skala · MI: spegla · TR: trimma · EX: förläng · E: radera · J: sammanfoga · X: dela upp · F: avrunda · CHA: fasa · PI/PD: hörn · L: linje · C: cirkel · REC: rektangel · A: båge · T: text · LE: leader · BLOCK: blockbibliotek · DIM: mått · CAL: kalibrera · VP: viewport · MASK: maska · TEXTEDIT: ersätt text · GETLINE: kopiera PDF-linje · COVERLINE: täck linje · ERASELINE: ta bort PDF-linje · U: ångra · Z: anpassa · ZE: visa allt · Esc: avbryt",
     );
   else if (value.toUpperCase() === "BLOCK") library.open();
   else if (aliases[value.toUpperCase()]) setTool(aliases[value.toUpperCase()]);

@@ -61,6 +61,10 @@ export function primitives(e, scale) {
     line(p, { x: p.x + r * Math.cos(t - 0.4), y: p.y + r * Math.sin(t - 0.4) });
   };
   switch (e.type) {
+    case "polyline":
+      e.points.slice(1).forEach((p, i) => line(e.points[i], p));
+      if (e.closed) line(e.points.at(-1), e.points[0]);
+      break;
     case "line":
       line(a, b);
       break;
@@ -136,6 +140,7 @@ export function validateProject(p) {
   for (const s of Object.values(p.scales))
     if (!Number.isFinite(s) || s <= 0) throw Error("Ogiltig skala.");
   const counts = {
+    polyline: -1,
     viewport: 2,
     pdfErase: 2,
     block: 1,
@@ -158,7 +163,11 @@ export function validateProject(p) {
       typeof e.id !== "string" ||
       ids.has(e.id) ||
       !Array.isArray(e.points) ||
-      e.points.length !== counts[e.type] ||
+      (e.type === "polyline"
+        ? e.points.length < (e.closed ? 3 : 2) ||
+          e.points.length > 10000 ||
+          typeof e.closed !== "boolean"
+        : e.points.length !== counts[e.type]) ||
       e.points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y)) ||
       !/^#[0-9a-f]{6}$/i.test(e.color) ||
       !Number.isFinite(e.width) ||
@@ -208,6 +217,7 @@ export function validateProject(p) {
       e.viewportId !== undefined &&
       (typeof e.viewportId !== "string" ||
         ![
+          "polyline",
           "line",
           "circle",
           "rect",

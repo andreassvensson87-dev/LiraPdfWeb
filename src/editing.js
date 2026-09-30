@@ -1,5 +1,6 @@
 import { box, distance } from "./core.js";
 export const editableTypes = [
+  "polyline",
   "line",
   "circle",
   "rect",
