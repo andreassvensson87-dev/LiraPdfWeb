@@ -93,15 +93,12 @@ header {
   text-decoration: none;
   margin-right: 12px;
 }
-.brand b {
-  display: grid;
-  place-items: center;
-  background: #74d9b0;
-  color: #193d31;
-  width: 26px;
-  height: 28px;
-  border-radius: 5px;
-  font-size: 21px;
+.brand-logo {
+  display: block;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .brand strong {
   font-size: 20px;
