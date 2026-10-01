@@ -1,3 +1,5 @@
+import { toCad, fromCad, dist } from "./cad-geometry.js";
+import { polylineOffset } from "./polyline-offset.js";
 import { box, distance } from "./core.js";
 export const editableTypes = [
   "polyline",
@@ -10,7 +12,7 @@ export const editableTypes = [
   "dim",
   "block",
 ];
-export const offsetTypes = ["line", "circle", "rect"];
+export const offsetTypes = ["line", "circle", "rect", "arc", "polyline"];
 export function translateEntity(entity, a, b) {
   const e = structuredClone(entity);
   const shift = (p) => ({ x: p.x + b.x - a.x, y: p.y + b.y - a.y });
@@ -21,6 +23,21 @@ export function translateEntity(entity, a, b) {
 export function offsetEntity(entity, amount, side) {
   if (!(amount > 0) || !Number.isFinite(amount))
     throw Error("Ange ett positivt offsetavstånd.");
+  if (entity.type === "polyline") {
+    const n = polylineOffset(entity, amount, side);
+    if (!n)
+      throw Error(
+        "Offset ger en ogiltig eller kollapsad kontur. Välj mindre avstånd eller andra sidan.",
+      );
+    n.id = entity.id;
+    return n;
+  }
+  if (entity.type === "arc") {
+    const e = toCad(entity);
+    e.radius += dist(side, e.center) < e.radius ? -amount : amount;
+    if (e.radius <= 1e-8) throw Error("Offsetavståndet är för stort inåt.");
+    return fromCad(e);
+  }
   const e = structuredClone(entity),
     [a, b] = e.points;
   if (e.type === "line") {

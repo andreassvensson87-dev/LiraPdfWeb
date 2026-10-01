@@ -5,9 +5,10 @@ import {
   PDFName,
   decodePDFRawStream,
 } from "pdf-lib";
+import { removableTexts } from "./pdf-text-edit.js";
 import { multiply } from "./pdf-snapping.js";
 const identity = [1, 0, 0, 1, 0, 0];
-function tokens(s) {
+export function tokens(s) {
   const out = [];
   let i = 0;
   while (i < s.length) {
@@ -32,14 +33,14 @@ function tokens(s) {
         if (s[i] === ")") depth--;
         i++;
       }
-      out.push({ value: "string", start });
+      out.push({ value: "string", start, end: i });
       continue;
     }
     if (s[i] === "<" && s[i + 1] !== "<") {
       i++;
       while (i < s.length && s[i] !== ">") i++;
       i++;
-      out.push({ value: "string", start });
+      out.push({ value: "string", start, end: i });
       continue;
     }
     if ("[]<>".includes(s[i])) {
@@ -101,7 +102,7 @@ export function removableLines(content) {
   }
   return lines;
 }
-function pageContent(doc, page) {
+export function pageContent(doc, page) {
   const contents = page.node.Contents();
   if (!contents) return "";
   const refs = contents instanceof PDFArray ? contents.asArray() : [contents];
@@ -142,9 +143,16 @@ export async function applyLineRemovals(bytes, entities) {
   const doc = await PDFDocument.load(bytes);
   for (let i = 0; i < doc.getPageCount(); i++) {
     const offsets = new Set(
-      edits.filter((e) => e.page === i + 1).map((e) => e.eraseOffset),
+      edits
+        .filter((e) => e.page === i + 1 && Number.isInteger(e.eraseOffset))
+        .map((e) => e.eraseOffset),
     );
-    if (!offsets.size) continue;
+    const textOffsets = new Set(
+      edits
+        .filter((e) => e.page === i + 1 && Number.isInteger(e.eraseTextOffset))
+        .map((e) => e.eraseTextOffset),
+    );
+    if (!offsets.size && !textOffsets.size) continue;
     const page = doc.getPage(i),
       content = pageContent(doc, page),
       allowed = new Set(removableLines(content).map((l) => l.offset));
@@ -153,6 +161,15 @@ export async function applyLineRemovals(bytes, entities) {
         throw Error("PDF-linjen kan inte tas bort säkert.");
     const chars = content.split("");
     for (const offset of offsets) chars[offset] = "n";
+    const texts = removableTexts(content, doc, page);
+    for (const offset of textOffsets) {
+      const text = texts.find((t) => t.offset === offset);
+      if (!text) throw Error("PDF-texten kan inte tas bort säkert.");
+      // Empty the string, retaining text state operators and stable original offsets.
+      for (let j = text.offset; j < text.end; j++) chars[j] = " ";
+      chars[text.offset] = "(";
+      chars[text.offset + 1] = ")";
+    }
     page.node.set(
       PDFName.of("Contents"),
       doc.context.register(doc.context.flateStream(bytesOf(chars.join("")))),

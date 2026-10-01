@@ -1,3 +1,5 @@
+import { toCad, fromCad } from "./cad-geometry.js";
+import { trimExtend } from "./curve-trim.js";
 import { box, distance } from "./core.js";
 const clone = structuredClone;
 const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y }),
@@ -159,49 +161,18 @@ export function intersection(a, b, c, d) {
   return { point: add(a, mul(v, t)), t, u };
 }
 export function trimLine(e, limits, p, extend = false) {
-  if (e.type !== "line")
-    throw Error(
-      "Välj en rak linje. Dela upp rektanglar och polylinjer med X först.",
-    );
-  const [a, b] = e.points,
-    v = sub(b, a),
-    len2 = dot(v, v);
-  if (len2 < 1e-12) throw Error("Linjen är för kort.");
-  const cuts = limits
-    .filter((x) => x.id !== e.id)
-    .flatMap((x) => {
-      if (!["line", "rect", "polyline"].includes(x.type)) return [];
-      return segments(x)
-        .map(([c, d]) => intersection(a, b, c, d))
-        .filter((h) => h && h.u >= -1e-8 && h.u <= 1 + 1e-8)
-        .map((h) => h.t);
-    })
-    .sort((a, b) => a - b)
-    .filter((t, i, arr) => !i || Math.abs(t - arr[i - 1]) > 1e-8);
-  if (extend) {
-    const first = distance(p, a) < distance(p, b),
-      t = first
-        ? cuts.filter((t) => t < -1e-8).at(-1)
-        : cuts.find((t) => t > 1 + 1e-8);
-    if (t === undefined) throw Error("Ingen gräns i förlängningens riktning.");
-    const n = clone(e);
-    n.points[first ? 0 : 1] = add(a, mul(v, t));
-    return [n];
+  const source = toCad(e);
+  if (source.type === "rect") {
+    source.type = "polyline";
+    source.points = pathPoints(e);
+    source.closed = true;
   }
-  const inner = cuts.filter((t) => t > 1e-8 && t < 1 - 1e-8);
-  if (!inner.length) throw Error("Ingen skärning med valda gränser.");
-  const pos = dot(sub(p, a), v) / len2,
-    lo = inner.findLast((t) => t <= pos) ?? 0,
-    hi = inner.find((t) => t > pos) ?? 1;
-  return [
-    [0, lo],
-    [hi, 1],
-  ]
-    .filter(([l, h]) => h - l > 1e-8)
-    .map(([l, h]) => ({
-      ...clone(e),
-      points: [add(a, mul(v, l)), add(a, mul(v, h))],
-    }));
+  return trimExtend(
+    source,
+    limits.map(toCad),
+    p,
+    extend ? "EXTEND" : "TRIM",
+  ).map(fromCad);
 }
 export function cornerLines(e1, e2, p1, p2, size, fillet) {
   if (e1.id === e2.id || e1.type !== "line" || e2.type !== "line")

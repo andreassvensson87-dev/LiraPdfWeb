@@ -133,7 +133,7 @@ Viewportskala, objekt och tillhörighet sparas i projektfilen och i autosparande
 Under **Redigera** finns **Flytta (M/MOVE)**, **Kopiera (CO/COPY)** och **Offset (O/OFFSET)** med arbetsgång från LiraCADWeb. Välj ett objekt före kommandot, eller klicka på ett eller flera objekt efter att kommandot startats och tryck Enter/mellanslag. Klicka igen på ett valt objekt för att välja bort det.
 
 - Flytta/Kopiera: välj baspunkt och målpunkt. Du kan peka ut riktningen och skriva ett avstånd i mm om de valda objekten har samma kalibrerade skala. Snappning, ORTHO, POLAR och OTRACK hjälper till vid placeringen. Kopiera låter dig placera flera kopior från samma baspunkt.
-- Offset: välj linjer, cirklar eller rektanglar, skriv avstånd i mm och klicka på önskad sida. Avståndet räknas med respektive objekts viewportskala eller papperskalibrering. För stort avstånd inåt avvisas. Bågar stöds ännu inte av Offset.
+- Offset: välj linjer, cirklar eller rektanglar, skriv avstånd i mm och klicka på önskad sida. Avståndet räknas med respektive objekts viewportskala eller papperskalibrering. För stort avstånd inåt avvisas. Offset stöder även bågar och raka polylinjer.
 - Förhandsvisningen visar placeringen före klick. Escape avbryter; Ångra återställer varje genomförd ändring. Flyttade/kopierade objekt behåller sin viewporttillhörighet. Viewportramar redigeras separat med sina grepp.
 - PDF-underlagets linjer hämtas först med **Hämta linje**. Det ger en redigerbar kopia; originalet ligger kvar tills du använder Täck linje eller Ta bort PDF-linje.
 
@@ -141,7 +141,7 @@ Viewportens namn och skala visas enbart under rutan, när visningen är aktivera
 
 ## Ritredigering och PDF-verktyg
 
-**Redigera** innehåller verktygen för ritade objekt. **PDF** samlar Maska, Hämta linje, Täck linje, Ta bort PDF-linje och Ersätt text.
+**Redigera** innehåller verktygen för ritade objekt. **PDF** samlar Maska, Hämta linje, Täck linje, Ta bort PDF-linje, Ta bort PDF-text och Ersätt text.
 
 | Verktyg                | Kommando      | Arbetsgång                                                                                                       |
 | ---------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -157,7 +157,7 @@ Viewportens namn och skala visas enbart under rutan, när visningen är aktivera
 | Fasa                   | CHA / CHAMFER | Ange lika fasavstånd i mm längs båda linjerna och klicka sidorna som ska behållas.                               |
 | Lägg till/ta bort hörn | PI / PD       | Välj en rektangel eller polylinje, Enter, klicka vid önskat segment/hörn.                                        |
 
-Trimma/Förläng ändrar raka linjer mot gränser av linjer, rektanglar eller raka polylinjer. Dela upp en kontur med X före trimning. Kurvor är ännu inte gränser i dessa två verktyg. Sammanfoga arbetar med raka segment. Rotera, Skala och Spegla stöder linjer, cirklar, rektanglar, bågar och raka polylinjer; roterade/speglade rektanglar blir polylinjer. Text, mått och PDF-block ingår inte i dessa tre verktyg. Linjebredder behåller sin pappersstorlek. Skala ändrar objektens verkliga storlek, medan viewportskala ändrar visningsskalan.
+Trimma/Förläng ändrar linjer, bågar och raka polylinjer mot gränser av linjer, rektanglar, polylinjer, cirklar och bågar. Rektanglar kan trimmas till öppna polylinjer. Slutna konturer kan inte förlängas. Cirklar kan trimmas till bågar mellan två skärningar. Klicka på delen som ska tas bort. Trimma/Förläng fortsätter med samma gränser tills du avslutar med Esc; varje ändring går att ångra separat. Sammanfoga arbetar med raka segment. Rotera, Skala och Spegla stöder linjer, cirklar, rektanglar, bågar och raka polylinjer; roterade/speglade rektanglar blir polylinjer. Text, mått och PDF-block ingår inte i dessa tre verktyg. Linjebredder behåller sin pappersstorlek. Skala ändrar objektens verkliga storlek, medan viewportskala ändrar visningsskalan.
 
 Ändringar sparas i projekt och PDF-export. Escape avbryter pågående val; varje genomförd åtgärd kan ångras.
 
@@ -171,3 +171,43 @@ Med **Markera** drar du från en tom yta:
 - Flera markerade objekt kan dras tillsammans, raderas eller skickas till redigeringsverktyg som Flytta och Kopiera. Byte av menyflik behåller urvalet. Escape avmarkerar.
 
 Markeringsrutan fungerar även när ett redigeringskommando väntar på objekt. Markeringen gäller ritade objekt och importerade block; PDF-underlagets linjer hämtas först med Hämta linje.
+
+## Kommandoflöde och exakt inmatning
+
+Tomt **Enter/mellanslag** avslutar ett aktivt ritkommando. I markeringsläget upprepas det senaste rit- eller redigeringsverktyget. Under objektval fortsätter Enter till nästa steg. Escape avbryter verktyget och rensar urvalet. **Mellanslag + dra** panorerar utan att upprepa ett kommando när tangenten släpps.
+
+Med ett ritverktyg aktivt kan punkter anges i kommandoraden:
+
+| Inmatning    | Betydelse                                                                                     |
+| ------------ | --------------------------------------------------------------------------------------------- |
+| `5000`       | Längd/radie i mm längs pekarens riktning (linje/cirkel).                                      |
+| `@5000,2000` | Relativ punkt: 5000 mm åt höger och 2000 mm upp från föregående punkt.                        |
+| `5000<45`    | Punkt 5000 mm från föregående punkt med 45° vinkel.                                           |
+| `#1000;2000` | Absolut punkt: x=1000, y=2000 mm från nedre vänstra hörnet av aktuellt papper eller viewport. |
+| `@12,5;25,5` | Relativ punkt med svenska decimaler. Använd semikolon mellan koordinaterna.                   |
+
+Positiva vinklar går moturs från höger. Skalningen följer den aktuella viewporten eller papprets kalibrering. Använd `#` för absoluta koordinater så att decimaler med komma inte blandas ihop med koordinatpar. Exakta koordinater påverkas inte av snappning.
+
+### Referens för rotation och skalning
+
+Välj objekt, starta **RO** eller **SC**, välj baspunkt och skriv **R**. Ange det gamla referensmåttet, eller välj två punkter som mäter det. Ange sedan det nya måttet eller klicka en målpunkt från baspunkten.
+
+- **SC → R → 100 → 200** fördubblar objektets längder. Längderna anges i mm.
+- **RO → R → 45 → 90** vrider objektet ytterligare 45° moturs.
+- Referensskalning med numeriska längder kräver samma kalibrerade skala för hela urvalet. Rotation i grader kräver ingen längdkalibrering.
+
+### Offset av kurvor och konturer
+
+Offset bevarar bågars centrum och vinkelomfång och ändrar radien. Polylinjer får parallella segment med beräknade hörn. Kollapsade, vända eller självskärande resultat avvisas. Slutna polylinjer använder klick innanför/utanför för att bestämma sida. Polylinjerna består av raka segment; bågar är separata objekt.
+
+### Greppredigering
+
+Markera en linje, cirkel eller båge och dra i ett grepp. Cirkelns centrumgrepp flyttar hela cirkeln med bibehållen radie. Bågens tre grepp ändrar dess ändpunkter och mellanpunkt.
+
+Klicka på ett grepp utan att dra för att aktivera det. Välj sedan ny punkt eller skriv `@x,y` (förflyttning från greppet) eller `#x;y` (absolut koordinat) i kommandoraden. För en linje kan du ange dess nya längd, för cirkelns radiegrepp en ny radie. Måtten anges i mm och följer objektets viewport eller papperskalibrering. Pekaren anger riktningen; utan pekarförflyttning behålls den gamla riktningen. Esc avbryter utan att ändra objektet.
+
+### Ta bort PDF-text
+
+Välj **PDF → Ta bort PDF-text** eller skriv `ERASETEXT`. Peka på en text: den borttagbara texten markeras rött. Klicka för att ta bort den och fortsätt med nästa text. Esc avslutar. Borttagningen går att ångra/göra om, sparas i projektet och tillämpas vid PDF-export.
+
+Första versionen stöder fristående textsträngar med standardkodning (WinAnsi, eller ASCII i Helvetica/Times/Courier). Sammansatta textoperationer, specialkodade typsnitt, markerat PDF-innehåll, text i PDF-block och skannade bilder stöds ännu inte. Endast text som kan kopplas entydigt till en textoperation markeras. För andra fall finns Maska.

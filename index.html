@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>LiraPDF</title>
-  <link rel="icon" href="./lira-icon.svg" type="image/svg+xml"><link rel="icon" href="./favicon-32.png" type="image/png" sizes="32x32"><link rel="apple-touch-icon" href="./apple-touch-icon.png"></head>
-  <body>
+  <link rel="icon" href="./lira-icon.svg" type="image/svg+xml"><link rel="icon" href="./favicon-32.png" type="image/png" sizes="32x32"><link rel="apple-touch-icon" href="./apple-touch-icon.png"><link rel="stylesheet" href="./src/lira-shell.css"><link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#192f35"></head>
+  <body data-lira-app="pdf">
     <header>
       <a class="brand" href="#" aria-label="LiraPDF"
         ><img class="brand-logo" src="./lira-icon.svg" width="32" height="32" alt="" aria-hidden="true"><strong>Lira<span>PDF</span></strong></a
@@ -259,14 +259,14 @@
       <div class="footer-actions">
         <button id="ortho">ORTHO AV · F8</button
         ><button id="snap" class="active">SNAPP PÅ</button>
-        <button id="polar" aria-pressed="false">POLAR · F10 · AV</button>
+        <button id="polar" aria-pressed="true">POLAR · F10 · PÅ</button>
         <select id="polarAngle" aria-label="Polarvinkel">
           <option value="15">15°</option>
           <option value="30">30°</option>
           <option value="45" selected>45°</option>
           <option value="90">90°</option>
         </select>
-        <button id="otrack" aria-pressed="false">OTRACK · F11 · AV</button>
+        <button id="otrack" aria-pressed="true">OTRACK · F11 · PÅ</button>
       </div>
     </footer>
     <input

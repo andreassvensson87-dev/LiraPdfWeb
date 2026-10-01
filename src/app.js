@@ -1,3 +1,12 @@
+import { setupPWA } from "./pwa.js";
+import { initializeLiraShell } from "./lira-shell.js";
+import { textRemovalTargets, textTargetAt } from "./pdf-text-edit.js";
+let removableTextTargets = [];
+import { moveGrip, gripLengthPoint } from "./grips.js";
+let activeGrip = null;
+import { exactPoint, referenceValue } from "./command-input.js";
+let lastTool = null,
+  spacePanned = false;
 import { inSelection, mergeSelection } from "./selection.js";
 const selection = new Set();
 import {
@@ -29,7 +38,8 @@ function editTypes(t) {
   if (t === "offset") return offsetTypes;
   if (["rotate", "scale", "mirror"].includes(t))
     return ["line", "circle", "rect", "arc", "polyline"];
-  if (["trim", "extend"].includes(t)) return ["line", "rect", "polyline"];
+  if (["trim", "extend"].includes(t))
+    return ["line", "rect", "polyline", "circle", "arc"];
   if (t === "join") return ["line", "polyline"];
   if (["explode", "pinsert", "pdelete"].includes(t))
     return ["rect", "polyline"];
@@ -59,8 +69,8 @@ import {
   snapSymbol,
 } from "./drawing-aids.js";
 const tracker = createTracker();
-let polar = false,
-  otrack = false,
+let polar = true,
+  otrack = true,
   polarAngle = 45,
   trackingAnchors = [],
   aidGuides = [],
@@ -133,6 +143,7 @@ const tools = [
   ["extract", "", "Hämta linje", "GETLINE"],
   ["coverLine", "", "Täck linje", "COVERLINE"],
   ["eraseLine", "", "Ta bort PDF-linje", "ERASELINE"],
+  ["eraseText", "", "Ta bort PDF-text", "ERASETEXT"],
 ];
 const toolCategories = {
   rotate: "edit",
@@ -161,6 +172,7 @@ const toolCategories = {
   extract: "pdf",
   coverLine: "pdf",
   eraseLine: "pdf",
+  eraseText: "pdf",
   replace: "pdf",
   viewport: "measure",
   dim: "measure",
@@ -189,7 +201,17 @@ for (const button of document.querySelectorAll("[data-category]")) {
     showCategory(button.dataset.category);
   };
   button.onkeydown = (event) => {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    if (
+      ![
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "ArrowDown",
+        "Home",
+        "End",
+      ].includes(event.key)
+    )
+      return;
     event.preventDefault();
     const buttons = [...document.querySelectorAll("[data-category]")];
     let i = buttons.indexOf(button);
@@ -198,7 +220,10 @@ for (const button of document.querySelectorAll("[data-category]")) {
         ? 0
         : event.key === "End"
           ? buttons.length - 1
-          : (i + (event.key === "ArrowRight" ? 1 : buttons.length - 1)) %
+          : (i +
+              (["ArrowRight", "ArrowDown"].includes(event.key)
+                ? 1
+                : buttons.length - 1)) %
             buttons.length;
     buttons[i].click();
     buttons[i].focus();
@@ -325,6 +350,7 @@ function commit(next) {
   if (redraw) showPage(pageNo, true);
 }
 function history(redo = false) {
+  activeGrip = null;
   if (busy) return;
   const before = removalKey(state);
   const from = redo ? redoStack : undoStack,
@@ -369,7 +395,9 @@ $("dialog").addEventListener("close", () => {
   pendingDialog = null;
 });
 function setTool(t) {
+  activeGrip = null;
   if (busy || !pdf) return;
+  if (t !== "select") lastTool = t;
   const previousIds = [...selection];
   editOperation = transformTools.includes(t)
     ? {
@@ -431,6 +459,7 @@ for (const [id, icon, label, shortcut] of tools) {
     text: '<path d="M5 5h14M12 5v15M8 20h8"/>',
     leader: '<path d="m3 20 9-12h9M3 14v6h6"/>',
     coverLine: '<path d="M4 18 18 4M7 21 21 7"/>',
+    eraseText: '<path d="M4 4h14M11 4v15M7 19h8M16 12l6 6m0-6-6 6"/>',
     eraseLine: '<path d="M4 20 20 4M12 5l7 7M4 4l16 16"/>',
     extract:
       '<path d="M4 16 16 4m-1 9h6m-3-3v6"/><rect x="2" y="14" width="4" height="4"/><rect x="14" y="2" width="4" height="4"/>',
@@ -454,7 +483,7 @@ function prompt() {
   const steps = {
     viewport: ["Välj viewportens första hörn", "Välj motsatt hörn"],
     block: ["Klicka för att placera PDF-block · Esc avslutar"],
-    line: ["Välj startpunkt", "Välj slutpunkt eller skriv längd"],
+    line: ["Välj startpunkt", "Välj slutpunkt · längd · @dx,dy · längd<vinkel"],
     circle: ["Välj centrum", "Välj radiepunkt eller skriv radie"],
     rect: ["Välj första hörnet", "Välj motsatt hörn"],
     arc: [
@@ -475,6 +504,9 @@ function prompt() {
     ],
     replace: ["Dra ett område runt texten"],
     coverLine: ["Välj PDF-linje att täcka med vitt · originalet finns kvar"],
+    eraseText: [
+      "Peka för att markera en PDF-text · klicka för att ta bort · Esc avslutar",
+    ],
     eraseLine: ["Klicka på en fristående rak PDF-linje för att ta bort den"],
     extract: ["Välj PDF-linje att kopiera · originalet finns kvar"],
     mask: ["Dra ett område att täcka · originalinnehållet finns kvar"],
@@ -506,9 +538,9 @@ function prompt() {
         tool === "mirror" ? "Ange spegelaxelns första punkt" : "Ange baspunkt",
       target:
         tool === "rotate"
-          ? "Ange riktning eller vinkel i grader"
+          ? "Ange riktning/vinkel i grader · R: referens"
           : tool === "scale"
-            ? "Ange positiv skalfaktor, t.ex. 2"
+            ? "Ange skalfaktor, t.ex. 2 · R: referens"
             : tool === "mirror"
               ? "Ange spegelaxelns andra punkt · originalet behålls"
               : "Ange målpunkt eller skriv avstånd i mm",
@@ -520,8 +552,8 @@ function prompt() {
             : "Ange offsetavstånd i mm",
       cut:
         tool === "trim"
-          ? "Klicka på linjedelen som ska bort · Esc avslutar"
-          : "Klicka nära linjeänden som ska förlängas · Esc avslutar",
+          ? "Klicka på delen som ska bort · fortsätt klicka · Esc avslutar"
+          : "Klicka nära änden som ska förlängas · fortsätt klicka · Esc avslutar",
       corner: editOperation.first
         ? "Välj andra linjen på sidan som ska behållas"
         : "Välj första linjen på sidan som ska behållas",
@@ -529,9 +561,18 @@ function prompt() {
         tool === "pinsert"
           ? "Klicka för att lägga till hörn"
           : "Klicka på hörnet som ska tas bort",
+      refOld:
+        tool === "rotate"
+          ? "Referens: ange gammal vinkel eller välj första riktpunkten"
+          : "Referens: ange gammal längd i mm eller välj första mätpunkten",
+      refPick2: "Referens: välj andra mätpunkten",
+      refTarget:
+        tool === "rotate"
+          ? "Ange ny vinkel eller välj ny riktning från baspunkten"
+          : "Ange ny längd i mm eller välj målpunkt från baspunkten",
       side: "Klicka på önskad sida · Esc avslutar",
     }[editOperation.phase];
-  const next = `${editPrompt || steps[tool]?.[points.length] || "Välj punkt"} · ${scaleText}`;
+  const next = `${(activeGrip ? "Grepp: välj ny punkt · längd/radie i mm eller @x,y · Esc avbryter" : null) || editPrompt || steps[tool]?.[points.length] || "Välj punkt"} · ${scaleText}`;
   if ($("prompt").textContent !== next) {
     $("prompt").textContent = next;
   }
@@ -642,7 +683,7 @@ function drawEntity(e, preview = false) {
           y1: s.a.y,
           x2: s.b.x,
           y2: s.b.y,
-          stroke: e.color,
+          stroke: isSelected ? "#2879c4" : e.color,
           "stroke-width": e.width,
           "stroke-linecap": "round",
         },
@@ -693,7 +734,7 @@ function drawEntity(e, preview = false) {
       });
     }
   }
-  if (isSelected)
+  if (isSelected && (!editOperation || editOperation.phase === "select"))
     (e.type === "block" ? [e.points[0], blockCorners(e)[2]] : e.points).forEach(
       (p, i) =>
         svg(
@@ -723,6 +764,17 @@ function style() {
 function paint() {
   if (!viewport) return;
   $("overlay").replaceChildren();
+  if (tool === "eraseText" && hover) {
+    const hit = textTargetAt(removableTextTargets, hover);
+    if (hit)
+      svg("polygon", {
+        points: hit.polygon.map((p) => `${p.x},${p.y}`).join(" "),
+        fill: "#d5444426",
+        stroke: "#d54444",
+        "stroke-width": 1 / zoom,
+        "pointer-events": "none",
+      });
+  }
   if (["extract", "coverLine", "eraseLine"].includes(tool) && hover) {
     const segment = pdfLineAt(hover);
     if (segment)
@@ -741,7 +793,11 @@ function paint() {
     .filter((e) => e.type !== "pdfErase")
     .sort((a, b) => (a.type !== "viewport") - (b.type !== "viewport")))
     try {
-      drawEntity(e);
+      drawEntity(
+        activeGrip?.id === e.id && hover
+          ? moveGrip(e, activeGrip.index, hover)
+          : e,
+      );
     } catch {}
   if (
     editOperation &&
@@ -854,7 +910,7 @@ function refresh() {
     activeType !== "select" &&
     activeType !== "calibrate" &&
     !(activeType === "mask" && !current()) &&
-    !["extract", "coverLine", "eraseLine"].includes(activeType);
+    !["extract", "coverLine", "eraseLine", "eraseText"].includes(activeType);
   $("viewportControls").hidden = current()?.type !== "viewport";
   if (current()?.type === "viewport") {
     $("viewportScale").value = current().denominator;
@@ -877,15 +933,17 @@ function refresh() {
       ? "Välj redigeringsverktyg · Shift: lägg till · Alt: välj bort"
       : activeType === "coverLine"
         ? "Täckning med vitt · originalet finns kvar"
-        : activeType === "eraseLine"
-          ? "Tar bort fristående raka streck ur PDF-innehållet"
-          : activeType === "extract"
-            ? "Hämta en kopia · originalet finns kvar"
-            : activeType === "calibrate"
-              ? "Välj två punkter med känt avstånd"
-              : activeType === "mask"
-                ? "Vit täckning · originalinnehållet finns kvar"
-                : "Välj ett verktyg eller ett objekt i ritningen";
+        : activeType === "eraseText"
+          ? "Tar bort den rödmarkerade texten ur PDF-innehållet"
+          : activeType === "eraseLine"
+            ? "Tar bort fristående raka streck ur PDF-innehållet"
+            : activeType === "extract"
+              ? "Hämta en kopia · originalet finns kvar"
+              : activeType === "calibrate"
+                ? "Välj två punkter med känt avstånd"
+                : activeType === "mask"
+                  ? "Vit täckning · originalinnehållet finns kvar"
+                  : "Välj ett verktyg eller ett objekt i ritningen";
   $("lineControl").hidden = ["text", "replace", "mask"].includes(activeType);
   $("textControl").hidden = !["text", "replace", "leader", "dim"].includes(
     activeType,
@@ -921,6 +979,7 @@ function refresh() {
   $("calibrate").textContent = scale ? "Ändra skala" : "Kalibrera";
 }
 function select(id) {
+  activeGrip = null;
   selection.clear();
   if (id) selection.add(id);
   selected = id;
@@ -997,6 +1056,7 @@ async function showPage(n, keepView = false) {
     return;
   if (drag?.kind === "entity") state = drag.before;
   drag = null;
+  activeGrip = null;
   clearTracking();
   if (editOperation) tool = "select";
   editOperation = null;
@@ -1005,6 +1065,7 @@ async function showPage(n, keepView = false) {
   pdfSegments = [];
   snapHit = null;
   textItems = [];
+  removableTextTargets = [];
   pageNo = n;
   points = [];
   selected = null;
@@ -1053,6 +1114,22 @@ async function showPage(n, keepView = false) {
     const content = await page.getTextContent();
     if (token !== epoch) return;
     textItems = content.items;
+    removableTextTargets = await textRemovalTargets(
+      bytes,
+      n,
+      textItems,
+      viewport,
+    );
+    if (token !== epoch) return;
+    removableTextTargets = removableTextTargets.filter(
+      (t) =>
+        !state.entities.some(
+          (e) =>
+            e.type === "pdfErase" &&
+            e.page === n &&
+            e.eraseTextOffset === t.offset,
+        ),
+    );
     $("pageLabel").textContent = `Sida ${n} av ${pdf.numPages}`;
     $("pageNumber").value = n;
     $("pageNumber").max = pdf.numPages;
@@ -1099,6 +1176,7 @@ async function activateDocument(id) {
   const targetPage = d.pageNo;
   if (drag?.kind === "entity") state = drag.before;
   drag = null;
+  activeGrip = null;
   stashDocument();
   activeId = id;
   pdf = d.pdf;
@@ -1170,6 +1248,7 @@ function emptyWorkspace() {
   points = [];
   pdfSegments = [];
   textItems = [];
+  removableTextTargets = [];
   selected = hover = snapHit = drag = null;
   selection.clear();
   tool = "select";
@@ -1251,19 +1330,25 @@ function localPoint(ev, constrained = true) {
       "extract",
       "coverLine",
       "eraseLine",
+      "eraseText",
       "viewport",
     ].includes(tool) &&
     !space;
   const rawPointer = { ...p };
   aidGuides = [];
   snapHit = null;
-  if (constrained && snap && !["mask", "replace", "extract"].includes(tool)) {
+  if (
+    constrained &&
+    snap &&
+    !["mask", "replace", "extract", "eraseText"].includes(tool)
+  ) {
     const raw = { ...p };
     let best = 9 / zoom;
     for (const e of pageEntities().filter(
       (e) =>
         !drag?.ids?.includes(e.id) &&
         e.id !== drag?.id &&
+        e.id !== activeGrip?.id &&
         e.type !== "pdfErase",
     ))
       for (const [index, q] of e.points.entries()) {
@@ -1287,6 +1372,7 @@ function localPoint(ev, constrained = true) {
         (e) =>
           !drag?.ids?.includes(e.id) &&
           e.id !== drag?.id &&
+          e.id !== activeGrip?.id &&
           ["line", "rect", "leader", "polyline"].includes(e.type),
       )
       .flatMap((e) =>
@@ -1540,6 +1626,7 @@ async function addPoint(p) {
 $("viewport").addEventListener("pointerdown", async (ev) => {
   if (!viewport || pendingDialog || busy) return;
   if (ev.button === 1 || space) {
+    if (space) spacePanned = true;
     ev.preventDefault();
     drag = {
       kind: "pan",
@@ -1551,6 +1638,14 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
   }
   if (ev.button !== 0) return;
   const p = localPoint(ev);
+  if (activeGrip) {
+    try {
+      applyGrip(p);
+    } catch (e) {
+      error(e);
+    }
+    return;
+  }
 
   if (tool === "block" && pendingBlock) {
     const entity = {
@@ -1565,6 +1660,27 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
     commit(next);
     setTool("select");
     select(entity.id);
+    return;
+  }
+  if (tool === "eraseText") {
+    const hit = textTargetAt(removableTextTargets, p);
+    if (!hit) {
+      toast(
+        "Ingen borttagbar text här. Text i bilder, block eller med sammansatt kodning stöds ännu inte. Använd Maska vid behov.",
+      );
+      return;
+    }
+    const next = clone(state);
+    next.entities.push({
+      id: crypto.randomUUID(),
+      type: "pdfErase",
+      page: pageNo,
+      points: [hit.polygon[0], hit.polygon[2]],
+      ...style(),
+      eraseTextOffset: hit.offset,
+    });
+    commit(next);
+    toast("PDF-texten har tagits bort. Ångra återställer den.");
     return;
   }
   if (["coverLine", "eraseLine"].includes(tool)) {
@@ -1783,6 +1899,19 @@ $("viewport").addEventListener("pointermove", (ev) => {
       paint();
       return;
     }
+    if (drag.grip !== null && ["line", "circle", "arc"].includes(e.type)) {
+      try {
+        const q = original.points[drag.grip];
+        Object.assign(
+          e,
+          moveGrip(original, drag.grip, { x: q.x + delta.x, y: q.y + delta.y }),
+        );
+      } catch {
+        Object.assign(e, clone(original));
+      }
+      paint();
+      return;
+    }
     e.points = original.points.map((q, i) =>
       drag.grip === null || drag.grip === i
         ? { x: q.x + delta.x, y: q.y + delta.y }
@@ -1875,7 +2004,16 @@ function finishDrag(ev, cancel = false) {
         error(e);
         refresh();
       }
-    } else refresh();
+    } else {
+      if (
+        !cancel &&
+        d.grip !== null &&
+        ["line", "circle", "arc"].includes(current()?.type)
+      )
+        activeGrip = { id: d.id, index: d.grip };
+      hover = null;
+      refresh();
+    }
   }
   if ($("viewport").hasPointerCapture(ev.pointerId))
     $("viewport").releasePointerCapture(ev.pointerId);
@@ -2233,9 +2371,16 @@ function advancedPick(p, id) {
       tool === "extend",
     );
     next.entities = next.entities.filter((x) => x.id !== id);
-    next.entities.push(
-      ...result.map((x, i) => ({ ...x, id: i ? crypto.randomUUID() : id })),
-    );
+    const replacements = result.map((x, i) => ({
+      ...x,
+      id: i ? crypto.randomUUID() : id,
+    }));
+    next.entities.push(...replacements);
+    if (editOperation.ids.includes(id))
+      editOperation.ids = [
+        ...editOperation.ids.filter((x) => x !== id),
+        ...replacements.map((x) => x.id),
+      ];
   } else if (editOperation.phase === "vertex") {
     const source = state.entities.find((e) => e.id === editOperation.ids[0]);
     const n = vertexEdit(source, p, tool === "pdelete");
@@ -2285,7 +2430,56 @@ function editedEntities(p) {
     return translateEntity(e, points[0], p);
   });
 }
+function operationScale() {
+  const scales = editOperation.ids.map((id) =>
+    entityScale(
+      state.entities.find((e) => e.id === id),
+      state.entities,
+      state.scales,
+    ),
+  );
+  if (!scales[0] || scales.some((s) => s !== scales[0]))
+    throw Error("Exakt längd kräver objekt med samma kalibrerade skala.");
+  return scales[0];
+}
 function editPoint(p) {
+  if (editOperation.phase === "refOld") {
+    editOperation.refPoint = p;
+    editOperation.phase = "refPick2";
+    refresh();
+    return;
+  }
+  if (editOperation.phase === "refPick2") {
+    if (distance(editOperation.refPoint, p) < 1e-8) {
+      toast("Välj två olika referenspunkter.");
+      return;
+    }
+    editOperation.reference =
+      tool === "rotate"
+        ? Math.atan2(
+            p.y - editOperation.refPoint.y,
+            p.x - editOperation.refPoint.x,
+          )
+        : distance(editOperation.refPoint, p);
+    editOperation.phase = "refTarget";
+    refresh();
+    return;
+  }
+  if (editOperation.phase === "refTarget") {
+    try {
+      editOperation.value = referenceValue(
+        tool,
+        editOperation.reference,
+        tool === "rotate"
+          ? Math.atan2(p.y - points[0].y, p.x - points[0].x)
+          : distance(points[0], p),
+      );
+      editOperation.phase = "target";
+    } catch (e) {
+      error(e);
+      return;
+    }
+  }
   if (editOperation.phase === "base") {
     points = [p];
     editOperation.phase = "target";
@@ -2317,6 +2511,42 @@ function editPoint(p) {
   }
 }
 function editCommand(value, number) {
+  if (
+    value.toUpperCase() === "R" &&
+    ["rotate", "scale"].includes(tool) &&
+    editOperation.phase === "target"
+  ) {
+    editOperation.phase = "refOld";
+    delete editOperation.value;
+    refresh();
+    return;
+  }
+  if (
+    ["refOld", "refTarget"].includes(editOperation.phase) &&
+    value &&
+    Number.isFinite(number)
+  ) {
+    try {
+      const n =
+        tool === "rotate"
+          ? (-number * Math.PI) / 180
+          : number / operationScale();
+      if (tool === "scale" && n <= 0)
+        throw Error("Längden måste vara positiv.");
+      if (editOperation.phase === "refOld") {
+        editOperation.reference = n;
+        editOperation.phase = "refTarget";
+      } else {
+        editOperation.value = referenceValue(tool, editOperation.reference, n);
+        editOperation.phase = "target";
+        editPoint(hover || points[0]);
+      }
+    } catch (e) {
+      error(e);
+    }
+    refresh();
+    return;
+  }
   if (editOperation.phase === "select") {
     if (["erase", "join", "explode"].includes(tool)) {
       try {
@@ -2442,20 +2672,123 @@ const aliases = {
   GETLINE: "extract",
   COVERLINE: "coverLine",
   ERASELINE: "eraseLine",
+  ERASETEXT: "eraseText",
   V: "select",
 };
-$("command").addEventListener("keydown", (ev) => {
-  if (ev.isComposing || (ev.key !== "Enter" && ev.key !== " ")) return;
-  ev.preventDefault();
-  ev.stopPropagation();
-  const value = ev.target.value.trim(),
-    number = Number(value.replace(",", "."));
-  ev.target.value = "";
-  if (editOperation && (value === "" || Number.isFinite(number)))
+function applyGrip(p) {
+  const next = clone(state),
+    index = next.entities.findIndex((e) => e.id === activeGrip.id);
+  if (index < 0) {
+    activeGrip = null;
+    return;
+  }
+  next.entities[index] = moveGrip(next.entities[index], activeGrip.index, p);
+  activeGrip = null;
+  hover = null;
+  commit(next);
+  refresh();
+}
+function runCommand(value) {
+  if (busy || pendingDialog || document.querySelector("dialog[open]")) return;
+  value = value.trim();
+  if (value) {
+    const log = document.getElementById("lira-command-log");
+    if (log) {
+      const line = document.createElement("div");
+      line.textContent = `› ${value}`;
+      log.append(line);
+      while (log.children.length > 30) log.firstElementChild.remove();
+      log.scrollTop = log.scrollHeight;
+    }
+  }
+  const number = Number(value.replace(",", "."));
+  if (activeGrip) {
+    if (!value) {
+      activeGrip = null;
+      hover = null;
+      refresh();
+      return;
+    }
+    try {
+      const e = state.entities.find((e) => e.id === activeGrip.id);
+      const scale = entityScale(e, state.entities, state.scales);
+      const owner = state.entities.find((v) => v.id === e.viewportId);
+      const r = owner
+        ? box(...owner.points)
+        : { x: 0, y: 0, h: viewport.height };
+      const p = Number.isFinite(number)
+        ? gripLengthPoint(e, activeGrip.index, number, scale, hover)
+        : exactPoint(value, {
+            base: e.points[activeGrip.index],
+            origin: { x: r.x, y: r.y + r.h },
+            scale,
+          });
+      if (!p) throw Error("Ange ett mått eller en koordinat för greppet.");
+      applyGrip(p);
+    } catch (e) {
+      error(e);
+    }
+    return;
+  }
+  if (!value && !editOperation) {
+    if (tool !== "select") setTool("select");
+    else if (lastTool) setTool(lastTool);
+    return;
+  }
+  const canPoint = editOperation
+    ? (["base", "target", "refOld", "refPick2", "refTarget"].includes(
+        editOperation.phase,
+      ) &&
+        !["scale", "rotate"].includes(tool)) ||
+      ["base", "refOld", "refPick2"].includes(editOperation.phase)
+    : [
+        "line",
+        "circle",
+        "rect",
+        "arc",
+        "leader",
+        "dim",
+        "viewport",
+        "text",
+        "calibrate",
+      ].includes(tool);
+  if (
+    canPoint &&
+    (/^[@#]/.test(value) ||
+      value.includes("<") ||
+      value.includes(";") ||
+      (!Number.isFinite(number) && value.includes(",")))
+  ) {
+    try {
+      const base = points.at(-1),
+        context = scaleContext(base || hover),
+        r = context.owner
+          ? box(...context.owner.points)
+          : { x: 0, y: 0, h: viewport.height };
+      const scale = editOperation && base ? operationScale() : context.scale;
+      const p = exactPoint(value, {
+        base,
+        origin: { x: r.x, y: r.y + r.h },
+        scale,
+      });
+      if (p) {
+        if (editOperation) editPoint(p);
+        else addPoint(p);
+        return;
+      }
+    } catch (e) {
+      error(e);
+      return;
+    }
+  }
+  if (
+    editOperation &&
+    (value === "" || Number.isFinite(number) || value.toUpperCase() === "R")
+  )
     editCommand(value, number);
   else if (["HJÄLP", "HELP", "?"].includes(value.toUpperCase()))
     toast(
-      "M: flytta · CO: kopiera · O: offset · RO: rotera · SC: skala · MI: spegla · TR: trimma · EX: förläng · E: radera · J: sammanfoga · X: dela upp · F: avrunda · CHA: fasa · PI/PD: hörn · L: linje · C: cirkel · REC: rektangel · A: båge · T: text · LE: leader · BLOCK: blockbibliotek · DIM: mått · CAL: kalibrera · VP: viewport · MASK: maska · TEXTEDIT: ersätt text · GETLINE: kopiera PDF-linje · COVERLINE: täck linje · ERASELINE: ta bort PDF-linje · U: ångra · Z: anpassa · ZE: visa allt · Esc: avbryt",
+      "M: flytta · CO: kopiera · O: offset · RO: rotera · SC: skala · MI: spegla · TR: trimma · EX: förläng · E: radera · J: sammanfoga · X: dela upp · F: avrunda · CHA: fasa · PI/PD: hörn · L: linje · C: cirkel · REC: rektangel · A: båge · T: text · LE: leader · BLOCK: blockbibliotek · DIM: mått · CAL: kalibrera · VP: viewport · MASK: maska · TEXTEDIT: ersätt text · GETLINE: kopiera PDF-linje · COVERLINE: täck linje · ERASELINE: ta bort PDF-linje · ERASETEXT: ta bort PDF-text · U: ångra · Z: anpassa · ZE: visa allt · Esc: avbryt",
     );
   else if (value.toUpperCase() === "BLOCK") library.open();
   else if (aliases[value.toUpperCase()]) setTool(aliases[value.toUpperCase()]);
@@ -2475,6 +2808,14 @@ $("command").addEventListener("keydown", (ev) => {
       );
     else addPoint(constrain(points[0], hover, false, number, activeScale));
   } else toast("Okänt kommando. Skriv HJÄLP för att se alla kommandon.");
+}
+$("command").addEventListener("keydown", (ev) => {
+  if (ev.isComposing || !["Enter", " "].includes(ev.key)) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const value = ev.target.value;
+  ev.target.value = "";
+  runCommand(value);
   ev.target.blur();
 });
 window.addEventListener("keydown", (ev) => {
@@ -2486,9 +2827,10 @@ window.addEventListener("keydown", (ev) => {
     return;
   const typing = /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName);
   if (ev.key === "Escape") {
+    activeGrip = null;
     $("fileMenu").open = false;
     clearTracking();
-    if (pendingDialog) return;
+    if (pendingDialog || $("newPdfDialog").open) return;
     if (drag?.kind === "entity") state = drag.before;
     drag = null;
     points = [];
@@ -2508,6 +2850,16 @@ window.addEventListener("keydown", (ev) => {
     history(ev.shiftKey);
     return;
   }
+  if (
+    (ev.key === "Enter" || ev.key === " ") &&
+    ev.target.closest("button, summary, a")
+  )
+    return;
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    runCommand("");
+    return;
+  }
   if (ev.key === "F8") {
     ev.preventDefault();
     $("ortho").click();
@@ -2519,6 +2871,7 @@ window.addEventListener("keydown", (ev) => {
   }
   if (ev.key === " ") {
     ev.preventDefault();
+    if (!space) spacePanned = false;
     space = true;
   }
   if (ev.key === "Delete" || ev.key === "Backspace") {
@@ -2532,7 +2885,12 @@ window.addEventListener("keydown", (ev) => {
   }
 });
 window.addEventListener("keyup", (ev) => {
-  if (ev.key === " ") space = false;
+  if (ev.key === " ") {
+    const repeat = space && !spacePanned;
+    space = false;
+    if (repeat && !/INPUT|TEXTAREA|SELECT/.test(ev.target.tagName))
+      runCommand("");
+  }
 });
 window.addEventListener("blur", () => {
   space = false;
@@ -2598,3 +2956,33 @@ $("pageNumber").onchange = () => {
     showPage(n);
   else $("pageNumber").value = pageNo;
 };
+
+initializeLiraShell();
+
+setupPWA(async () => {
+  if (
+    busy ||
+    restoring ||
+    pendingDialog ||
+    drag ||
+    points.length ||
+    editOperation ||
+    activeGrip ||
+    document.querySelector("dialog[open]")
+  )
+    return "Avsluta eller avbryt pågående kommando före uppdatering.";
+  clearTimeout(saveTimer);
+  stashDocument();
+  await writeSaved({
+    version: 2,
+    activeId,
+    documents: documents.map((d) => ({
+      id: d.id,
+      name: d.name,
+      bytes: d.bytes,
+      state: clone(d.state),
+      pageNo: d.pageNo,
+      savedState: d.savedState,
+    })),
+  });
+});

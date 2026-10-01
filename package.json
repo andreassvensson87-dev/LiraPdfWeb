@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5178",
-    "build": "node scripts/prepare-pdf-assets.mjs && vite build",
+    "build": "node scripts/prepare-pdf-assets.mjs && vite build && node scripts/build-pwa.js",
     "test": "node --test tests/*.test.js",
-    "check": "node --check src/app.js && node --test tests/*.test.js && node scripts/prepare-pdf-assets.mjs && vite build",
+    "check": "node --check src/app.js && node --test tests/*.test.js && node scripts/prepare-pdf-assets.mjs && vite build && node scripts/build-pwa.js",
     "format": "prettier --write src tests index.html",
     "format:check": "prettier --check src tests index.html",
     "predev": "node scripts/prepare-pdf-assets.mjs"

@@ -198,7 +198,9 @@ export function validateProject(p) {
       throw Error("Projektet innehåller ett ogiltigt PDF-block.");
     if (
       e.type === "pdfErase" &&
-      (!Number.isSafeInteger(e.eraseOffset) || e.eraseOffset < 0)
+      ((e.eraseOffset === undefined) === (e.eraseTextOffset === undefined) ||
+        !Number.isSafeInteger(e.eraseOffset ?? e.eraseTextOffset) ||
+        (e.eraseOffset ?? e.eraseTextOffset) < 0)
     )
       throw Error("Ogiltig PDF-redigering.");
     if (
