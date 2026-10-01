@@ -1061,3 +1061,6 @@ dialog input {
   border-left: 1px solid var(--border);
   border-radius: 0;
 }
+
+/* Sharp visible PDF region sits above the overview, below editable geometry. */
+.pdf-detail { position:absolute; display:block; pointer-events:none; }

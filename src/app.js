@@ -1,3 +1,6 @@
+import { pageRotation, normalizeRotation } from "./page-rotation.js";
+import { createDetailRenderer } from "./pdf-detail.js";
+const pdfDetail = createDetailRenderer(document.getElementById("sheet"));
 import { setupPWA } from "./pwa.js";
 import { initializeLiraShell } from "./lira-shell.js";
 import { textRemovalTargets, textTargetAt } from "./pdf-text-edit.js";
@@ -192,6 +195,7 @@ function showCategory(category) {
       b.dataset.tool !== "select" &&
       toolCategories[b.dataset.tool] !== category;
   $("replace").hidden = category !== "pdf";
+  $("rotatePageCW").hidden = $("rotatePageCCW").hidden = category !== "pdf";
   $("measureCalibrate").hidden = category !== "measure";
 }
 for (const button of document.querySelectorAll("[data-category]")) {
@@ -348,6 +352,7 @@ function commit(next) {
   refresh();
   autosave();
   if (redraw) showPage(pageNo, true);
+  else view();
 }
 function history(redo = false) {
   activeGrip = null;
@@ -362,6 +367,7 @@ function history(redo = false) {
   editOperation = null;
   tool = "select";
   if (before !== removalKey(state)) showPage(pageNo, true);
+  else view();
   selected = null;
   selection.clear();
   points = [];
@@ -990,22 +996,49 @@ function select(id) {
   }
   refresh();
 }
+function displayedPage() {
+  return pageRotation(
+    viewport.width,
+    viewport.height,
+    state.rotations?.[pageNo] || 0,
+  );
+}
 function view() {
   if (!viewport) return;
+  const rotated = displayedPage();
   $("sheet").style.transform =
-    `translate(${pan.x}px,${pan.y}px) scale(${zoom})`;
+    `translate(${pan.x}px,${pan.y}px) scale(${zoom}) matrix(${rotated.matrix.join(",")})`;
   $("zoom").textContent = `${Math.round(zoom * 100)}%`;
+  const corners = [
+    { x: -pan.x / zoom, y: -pan.y / zoom },
+    {
+      x: ($("viewport").clientWidth - pan.x) / zoom,
+      y: ($("viewport").clientHeight - pan.y) / zoom,
+    },
+  ].map(rotated.inverse);
+  const left = Math.min(...corners.map((p) => p.x)),
+    top = Math.min(...corners.map((p) => p.y));
+  pdfDetail.update({
+    width: viewport.width,
+    height: viewport.height,
+    zoom,
+    pan: { x: -left * zoom, y: -top * zoom },
+    screenWidth: Math.abs(corners[1].x - corners[0].x) * zoom,
+    screenHeight: Math.abs(corners[1].y - corners[0].y) * zoom,
+    dpr: window.devicePixelRatio || 1,
+  });
   paint();
 }
 function fit() {
   if (!viewport) return;
+  const dimensions = displayedPage();
   zoom = Math.min(
-    ($("viewport").clientWidth - 70) / viewport.width,
-    ($("viewport").clientHeight - 55) / viewport.height,
+    ($("viewport").clientWidth - 70) / dimensions.width,
+    ($("viewport").clientHeight - 55) / dimensions.height,
   );
   pan = {
-    x: ($("viewport").clientWidth - viewport.width * zoom) / 2,
-    y: ($("viewport").clientHeight - viewport.height * zoom) / 2,
+    x: ($("viewport").clientWidth - dimensions.width * zoom) / 2,
+    y: ($("viewport").clientHeight - dimensions.height * zoom) / 2,
   };
   view();
 }
@@ -1025,6 +1058,14 @@ function fitAll() {
     right = Math.max(right, r.x + r.width + margin);
     bottom = Math.max(bottom, r.y + r.height + margin);
   }
+  const rotatedBounds = [
+    { x: left, y: top },
+    { x: right, y: bottom },
+  ].map(displayedPage().forward);
+  left = Math.min(...rotatedBounds.map((p) => p.x));
+  right = Math.max(...rotatedBounds.map((p) => p.x));
+  top = Math.min(...rotatedBounds.map((p) => p.y));
+  bottom = Math.max(...rotatedBounds.map((p) => p.y));
   const w = $("viewport").clientWidth,
     h = $("viewport").clientHeight;
   zoom = Math.min((w - 70) / (right - left), (h - 55) / (bottom - top));
@@ -1075,6 +1116,7 @@ async function showPage(n, keepView = false) {
   const previous = renderTask;
   previous?.cancel();
   try {
+    await pdfDetail.clear();
     if (previous) await previous.promise.catch(() => {});
     if (token !== epoch) return;
     if (state.entities.some((e) => e.type === "pdfErase"))
@@ -1136,6 +1178,9 @@ async function showPage(n, keepView = false) {
     $("pageTotal").textContent = `av ${pdf.numPages}`;
     $("prevPage").disabled = n === 1;
     $("nextPage").disabled = n === pdf.numPages;
+    const detailSource = editedPdf;
+    pdfDetail.setPage(page, detailSource ? () => detailSource.destroy() : null);
+    editedPdf = null;
     if (keepView) view();
     else fit();
     refresh();
@@ -1209,7 +1254,11 @@ async function openDocument(data, filename, project = null) {
       bytes: data.slice(),
       name: filename,
       state: project
-        ? { entities: clone(project.entities), scales: clone(project.scales) }
+        ? {
+            entities: clone(project.entities),
+            scales: clone(project.scales),
+            rotations: clone(project.rotations || {}),
+          }
         : { entities: [], scales: {} },
       undoStack: [],
       redoStack: [],
@@ -1239,6 +1288,7 @@ function saveDocument(d) {
   autosave();
 }
 function emptyWorkspace() {
+  pdfDetail.clear().catch(error);
   editOperation = null;
   ++epoch;
   activeId = pdf = bytes = viewport = null;
@@ -1321,6 +1371,7 @@ function localPoint(ev, constrained = true) {
     x: (ev.clientX - r.left - pan.x) / zoom,
     y: (ev.clientY - r.top - pan.y) / zoom,
   };
+  p = displayedPage().inverse(p);
   const drawing =
     constrained &&
     tool !== "select" &&
@@ -2278,6 +2329,7 @@ $("export").onclick = async () => {
       clone(state.entities),
       clone(state.scales),
       pdf,
+      clone(state.rotations || {}),
     );
     download(
       result,
@@ -2986,3 +3038,18 @@ setupPWA(async () => {
     })),
   });
 });
+
+function rotateCurrentPage(amount) {
+  if (!pdf || !viewport || busy || pendingDialog) return;
+  setTool("select");
+  const next = clone(state);
+  next.rotations ||= {};
+  next.rotations[pageNo] = normalizeRotation(
+    (next.rotations[pageNo] || 0) + amount,
+  );
+  commit(next);
+  fit();
+  toast(amount > 0 ? "Sidan roterad 90° medurs" : "Sidan roterad 90° moturs");
+}
+$("rotatePageCW").onclick = () => rotateCurrentPage(90);
+$("rotatePageCCW").onclick = () => rotateCurrentPage(-90);

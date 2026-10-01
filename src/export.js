@@ -9,7 +9,7 @@ const parseColor = (c) =>
     parseInt(c.slice(3, 5), 16) / 255,
     parseInt(c.slice(5, 7), 16) / 255,
   );
-export async function exportPdf(bytes, entities, scales, pdf) {
+export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
   const doc = await PDFDocument.load(await applyLineRemovals(bytes, entities)),
     font = await doc.embedFont(StandardFonts.Helvetica);
   const blocks = new Map();
@@ -17,6 +17,12 @@ export async function exportPdf(bytes, entities, scales, pdf) {
     const page = doc.getPage(i),
       source = await pdf.getPage(i + 1),
       vp = source.getViewport({ scale: 1 });
+    page.setRotation(
+      degrees(
+        (((page.getRotation().angle + (rotations[i + 1] || 0)) % 360) + 360) %
+          360,
+      ),
+    );
     const pt = (p) => {
       const [x, y] = vp.convertToPdfPoint(p.x, p.y);
       return { x, y };

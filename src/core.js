@@ -137,6 +137,17 @@ export function validateProject(p) {
     typeof p.scales !== "object"
   )
     throw Error("Ogiltig LiraPDF-projektfil.");
+  if (
+    p.rotations !== undefined &&
+    (!p.rotations ||
+      typeof p.rotations !== "object" ||
+      Array.isArray(p.rotations) ||
+      Object.entries(p.rotations).some(
+        ([page, angle]) =>
+          !/^[1-9]\d*$/.test(page) || ![0, 90, 180, 270].includes(angle),
+      ))
+  )
+    throw Error("Ogiltig sidrotation.");
   for (const s of Object.values(p.scales))
     if (!Number.isFinite(s) || s <= 0) throw Error("Ogiltig skala.");
   const counts = {
