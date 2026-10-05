@@ -489,7 +489,10 @@ function prompt() {
   const steps = {
     viewport: ["Välj viewportens första hörn", "Välj motsatt hörn"],
     block: ["Klicka för att placera PDF-block · Esc avslutar"],
-    line: ["Välj startpunkt", "Välj slutpunkt · längd · @dx,dy · längd<vinkel"],
+    line: [
+      "Välj startpunkt",
+      "Välj nästa punkt · längd · @dx,dy · längd<vinkel · Esc avslutar",
+    ],
     circle: ["Välj centrum", "Välj radiepunkt eller skriv radie"],
     rect: ["Välj första hörnet", "Välj motsatt hörn"],
     arc: [
@@ -1668,7 +1671,9 @@ async function addPoint(p) {
     const next = clone(state);
     next.entities.push(e);
     commit(next);
+    if (type === "line") points = [ps[1]];
   } catch (e) {
+    if (type === "line") points = [ps[0]];
     error(e);
   } finally {
     refresh();

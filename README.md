@@ -27,6 +27,7 @@ Markera, ångra/gör om och zoom är alltid tillgängliga. Kommandon öppnar rä
 
 - Öppna en PDF eller använd exempelritningen.
 - Verktyg: `L` linje, `C` cirkel, `REC` rektangel, `A` trepunktsbåge, `T` text, `LE` leader. Skriv kommandot följt av Enter eller mellanslag. Båda tangenterna bekräftar också längder i kommandoraden.
+- Linje fortsätter från föregående slutpunkt efter varje klick eller inmatad längd/koordinat. Varje segment är en separat linje. Esc eller tomt Enter avslutar utan att ta bort redan ritade linjer.
 - Leader: välj pilspets, brytpunkt och textplacering. Skriv kommentaren i dialogen.
 - `CAL`: välj två punkter och ange det verkliga avståndet i mm. Skalan gäller den aktuella sidan.
 - `DIM`: välj två mätpunkter, placera måttlinjen med tredje klicket. Måttet räknas om vid ändrade punkter eller kalibrering.
