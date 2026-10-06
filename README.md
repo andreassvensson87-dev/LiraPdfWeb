@@ -8,6 +8,17 @@ Dubbelklicka på **Starta LiraPDF.command**. Appen öppnas på http://127.0.0.1:
 
 Med Node 22+ och npm: `npm install` och `npm run dev`. Alternativt `pnpm install` och `pnpm dev`. `pnpm-lock.yaml` låser den verifierade installationen.
 
+## Standardprogram för PDF i Windows
+
+Webbappen registrerar `.pdf` med File Handling API när den installeras via Microsoft Edge eller Google Chrome i Windows. Öppning från Utforskaren läser PDF:en lokalt och lägger den i en dokumentflik. Flera filer och upprepade öppningar hanteras i ordning. Om ett kommando eller en dialog pågår väntar filen tills arbetet avslutats; appen visar ett meddelande.
+
+1. Öppna den publicerade HTTPS-adressen i Edge eller Chrome och välj **Installera app** eller webbläsarens installationsknapp.
+2. Tillåt att LiraPDF öppnar PDF-filer när webbläsaren frågar.
+3. I Windows: **Inställningar → Appar → Standardappar**, sök efter **.pdf** och välj **LiraPDF**. Alternativt högerklicka på en PDF och välj **Öppna med → Välj en annan app → LiraPDF**, sedan alternativet att alltid använda appen.
+4. Dubbelklicka på en PDF i Utforskaren för att öppna den i LiraPDF.
+
+En vanlig webbläsarflik registreras inte som standardprogram. En befintlig installation kan behöva uppdateras eller installeras om för att få den nya filkopplingen. Den publicerade versionen kan användas offline efter att appens resurser har sparats. Om du installerar från localhost måste den lokala servern vara tillgänglig tills resurserna har sparats för offlinebruk. Webbläsare utan File Handling API använder fortsatt **Arkiv → Öppna PDF**. Windows väljer standardprogrammet först när du själv anger det i systeminställningarna. Dokument och snabbverktyg från en annan webbläsare eller webbadress överförs via sparade projektfiler respektive ställs in på nytt.
+
 ## Genomskinlighet
 
 **Egenskaper → Genomskinlighet** gäller för alla tillagda objekt, inklusive frihand, text, mått, maskningar, viewportetiketter och PDF-block. 0 % är helt täckande och 100 % är helt osynligt. Välj ett eller flera objekt för att ändra deras genomskinlighet, eller ställ in värdet innan du ritar. Värdet kan också sparas i egna snabbverktyg. Äldre projekt och snabbverktyg är helt täckande som tidigare. PDF-exporten applicerar genomskinligheten en gång per objekt så att överlappande delar av samma objekt behåller jämn färg.
@@ -222,3 +233,9 @@ Klicka på ett grepp utan att dra för att aktivera det. Välj sedan ny punkt el
 Välj **PDF → Ta bort PDF-text** eller skriv `ERASETEXT`. Peka på en text: den borttagbara texten markeras rött. Klicka för att ta bort den och fortsätt med nästa text. Esc avslutar. Borttagningen går att ångra/göra om, sparas i projektet och tillämpas vid PDF-export.
 
 Första versionen stöder fristående textsträngar med standardkodning (WinAnsi, eller ASCII i Helvetica/Times/Courier). Sammansatta textoperationer, specialkodade typsnitt, markerat PDF-innehåll, text i PDF-block och skannade bilder stöds ännu inte. Endast text som kan kopplas entydigt till en textoperation markeras. För andra fall finns Maska.
+
+## Objektgrupper
+
+Markera flera objekt och välj **Högerklick → Gruppera**. Klick på en medlem väljer hela gruppen, och ett drag flyttar medlemmarna tillsammans. Shift-klick och markeringsrutor väljer också hela grupper. **Ctrl/⌘-klick** eller **Högerklick → Välj enskilt objekt** väljer en medlem för individuell flytt eller ändring av färg, bredd och genomskinlighet. Medlemskapet finns kvar efter ändringen. Välj **Högerklick → Lös upp grupp** för att återgå till separata objekt.
+
+Grupper sparas i projekt och autosparande och stöder ångra/gör om. Kopierade grupper får ett eget medlemskap. Grupper gäller tillagda objekt på samma sida; PDF-underlagets originalgrafik hämtas först med Hämta linje. Om befintliga grupper grupperas ihop bildas en gemensam grupp, utan undergrupper.

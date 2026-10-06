@@ -168,6 +168,7 @@ export function validateProject(p) {
     dim: 3,
   };
   const ids = new Set();
+  const groupPages = new Map();
   for (const e of p.entities) {
     if (
       !counts[e.type] ||
@@ -194,6 +195,17 @@ export function validateProject(p) {
       ("text" in e && typeof e.text !== "string")
     )
       throw Error("Projektet innehåller ogiltiga objekt.");
+    if (e.groupId !== undefined) {
+      if (
+        typeof e.groupId !== "string" ||
+        !e.groupId.length ||
+        e.groupId.length > 100 ||
+        e.type === "pdfErase" ||
+        (groupPages.has(e.groupId) && groupPages.get(e.groupId) !== e.page)
+      )
+        throw Error("Ogiltig objektgrupp.");
+      groupPages.set(e.groupId, e.page);
+    }
     if (
       e.textAnchor &&
       (!Number.isFinite(e.textAnchor.x) || !Number.isFinite(e.textAnchor.y))

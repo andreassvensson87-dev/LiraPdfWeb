@@ -687,3 +687,36 @@ body[data-lira-app].lira-inspector-collapsed
   padding: 56px 6px 12px;
   flex-direction: column;
 }
+
+.object-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 200px;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
+  background: #fff;
+  border: 1px solid #d5dfe1;
+  border-radius: 9px;
+  box-shadow: 0 5px 20px #172b3226;
+}
+.object-menu[hidden] {
+  display: none;
+}
+.object-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  border-radius: 5px;
+  box-shadow: none;
+  font-size: 12px;
+}
+.object-menu button:hover:not(:disabled),
+.object-menu button:focus-visible {
+  background: #edf3f3;
+}
+.object-menu button:disabled {
+  opacity: 0.4;
+}

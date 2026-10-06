@@ -4,6 +4,13 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": { "application/pdf": [".pdf"] },
+      "launch_type": "single-client"
+    }
+  ],
   "background_color": "#edf0ef",
   "theme_color": "#192f35",
   "icons": [

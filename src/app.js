@@ -1,3 +1,12 @@
+import {
+  expandGroups,
+  groupObjects,
+  ungroupObjects,
+  normalizeGroups,
+  copyGroupIds,
+} from "./groups.js";
+import { setupObjectMenu } from "./object-menu.js";
+let objectMenu;
 import { setupQuickTools } from "./quick-tools.js";
 let quickToolBar;
 import { appendStrokePoint, completeStroke } from "./freehand.js";
@@ -5,6 +14,7 @@ import { pageRotation, normalizeRotation } from "./page-rotation.js";
 import { createDetailRenderer } from "./pdf-detail.js";
 const pdfDetail = createDetailRenderer(document.getElementById("sheet"));
 import { setupPWA } from "./pwa.js";
+import { setupFileHandling } from "./file-handling.js";
 import { initializeLiraShell } from "./lira-shell.js";
 import { textRemovalTargets, textTargetAt } from "./pdf-text-edit.js";
 let removableTextTargets = [];
@@ -349,6 +359,7 @@ function removalKey(s) {
   return JSON.stringify(s.entities.filter((e) => e.type === "pdfErase"));
 }
 function commit(next) {
+  normalizeGroups(next.entities);
   const redraw = removalKey(state) !== removalKey(next);
   undoStack.push(clone(state));
   if (undoStack.length > 80) undoStack.shift();
@@ -360,6 +371,7 @@ function commit(next) {
   else view();
 }
 function history(redo = false) {
+  objectMenu?.close();
   activeGrip = null;
   if (busy) return;
   const before = removalKey(state);
@@ -406,6 +418,7 @@ $("dialog").addEventListener("close", () => {
   pendingDialog = null;
 });
 function setTool(t) {
+  objectMenu?.close();
   activeGrip = null;
   if (busy || !pdf) return;
   if (t !== "select") lastTool = t;
@@ -980,7 +993,7 @@ function refresh() {
     hasStyle || ["block", "viewport"].includes(current()?.type);
   $("selectionHint").textContent =
     selection.size > 1
-      ? "Välj redigeringsverktyg · Shift: lägg till · Alt: välj bort"
+      ? "Högerklick: gruppera · Ctrl/⌘-klick: välj enskilt objekt"
       : activeType === "coverLine"
         ? "Täckning med vitt · originalet finns kvar"
         : activeType === "eraseText"
@@ -1036,11 +1049,14 @@ function refresh() {
   $("scaleLabel").textContent = scale ? "Skala kalibrerad" : "Ej kalibrerad";
   $("calibrate").textContent = scale ? "Ändra skala" : "Kalibrera";
 }
-function select(id) {
+function select(id, individual = false) {
   activeGrip = null;
   selection.clear();
-  if (id) selection.add(id);
-  selected = id;
+  if (id)
+    (individual ? [id] : expandGroups(state.entities, [id])).forEach((id) =>
+      selection.add(id),
+    );
+  selected = selection.size === 1 ? id : null;
   const e = current();
   if (e) {
     $("toolname").textContent = names[e.type];
@@ -1140,6 +1156,7 @@ function zoomAt(
   view();
 }
 async function showPage(n, keepView = false) {
+  objectMenu?.close();
   if (
     !pdf ||
     pendingDialog ||
@@ -1908,6 +1925,7 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
       end: localPoint(ev, false),
       before: [...(editOperation?.ids || selection)],
       edit: !!editOperation,
+      individual: ev.ctrlKey || ev.metaKey,
       mode: ev.altKey
         ? "remove"
         : ev.shiftKey || editOperation
@@ -1930,11 +1948,23 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
         );
         return;
       }
+      const members = (
+        ev.ctrlKey || ev.metaKey || ["pinsert", "pdelete"].includes(tool)
+          ? [id]
+          : expandGroups(state.entities, [id])
+      ).filter((id) =>
+        editTypes(tool).includes(state.entities.find((e) => e.id === id)?.type),
+      );
       const i = editOperation.ids.indexOf(id);
       if (i < 0) {
         if (["pinsert", "pdelete"].includes(tool)) editOperation.ids = [];
-        editOperation.ids.push(id);
-      } else editOperation.ids.splice(i, 1);
+        editOperation.ids.push(
+          ...members.filter((id) => !editOperation.ids.includes(id)),
+        );
+      } else
+        editOperation.ids = editOperation.ids.filter(
+          (id) => !members.includes(id),
+        );
       refresh();
     } else if (["cut", "corner", "vertex"].includes(editOperation.phase)) {
       try {
@@ -1948,15 +1978,21 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
   if (tool === "select") {
     const id = ev.target.closest("[data-id]")?.dataset.id;
     if (id) {
-      if (ev.shiftKey || ev.altKey) {
-        if (ev.altKey || selection.has(id)) selection.delete(id);
-        else selection.add(id);
+      if (ev.ctrlKey || ev.metaKey) select(id, true);
+      else if (ev.shiftKey || ev.altKey) {
+        const members = expandGroups(state.entities, [id]);
+        const remove = ev.altKey || members.every((id) => selection.has(id));
+        for (const member of members)
+          remove ? selection.delete(member) : selection.add(member);
         selected = selection.size === 1 ? [...selection][0] : null;
-        if (selected) select(selected);
+        if (selected) select(selected, true);
         refresh();
         return;
-      }
-      if (!selection.has(id)) select(id);
+      } else if (
+        !selection.has(id) ||
+        !expandGroups(state.entities, [id]).every((id) => selection.has(id))
+      )
+        select(id);
       drag = {
         kind: "entity",
         ids: [...selection],
@@ -2133,7 +2169,11 @@ function finishDrag(ev, cancel = false, useFinalPoint = true) {
               })
               .map((e) => e.id)
           : [];
-      let ids = mergeSelection(d.before, hits, d.mode);
+      let ids = mergeSelection(
+        d.before,
+        d.individual ? hits : expandGroups(state.entities, hits),
+        d.mode,
+      );
       if (d.edit) {
         ids = ids.filter((id) =>
           editTypes(tool).includes(
@@ -2146,7 +2186,7 @@ function finishDrag(ev, cancel = false, useFinalPoint = true) {
         selection.clear();
         ids.forEach((id) => selection.add(id));
         selected = ids.length === 1 ? ids[0] : null;
-        if (selected) select(selected);
+        if (selected) select(selected, true);
       }
     }
     refresh();
@@ -2426,6 +2466,7 @@ $("copyBlock").onclick = () => {
   if (current()?.type !== "block") return;
   pendingBlock = clone(current());
   delete pendingBlock.id;
+  delete pendingBlock.groupId;
   setTool("block");
 };
 $("open").onclick = () => $("pdfInput").click();
@@ -2686,10 +2727,11 @@ function editPoint(p) {
   try {
     const edits = editedEntities(p),
       next = clone(state);
-    for (const e of edits) {
+    const copies = copyGroupIds(edits, () => crypto.randomUUID());
+    for (const [index, e] of edits.entries()) {
       if (["move", "rotate", "scale"].includes(tool))
         next.entities[next.entities.findIndex((x) => x.id === e.id)] = e;
-      else next.entities.push({ ...e, id: crypto.randomUUID() });
+      else next.entities.push(copies[index]);
     }
     commit(next);
     if (["move", "rotate", "scale", "mirror"].includes(tool)) setTool("select");
@@ -3121,9 +3163,28 @@ async function start() {
     else await openDocument(await demoPdf(), "Exempelritning.pdf");
   } catch (e) {
     error(e);
+  } finally {
+    restoring = false;
   }
 }
-start();
+const startup = start();
+setupFileHandling({
+  ready: startup,
+  canOpen: () =>
+    !busy &&
+    !restoring &&
+    !pendingDialog &&
+    !drag &&
+    !points.length &&
+    !editOperation &&
+    !activeGrip,
+  open: openDocument,
+  error,
+  waiting: () =>
+    toast(
+      "En PDF väntar på att öppnas. Avsluta kommandot eller dialogen först.",
+    ),
+});
 
 $("togglePages").onclick = () => {
   $("pagePanel").classList.toggle("documents-collapsed");
@@ -3215,3 +3276,73 @@ function rotateCurrentPage(amount) {
 }
 $("rotatePageCW").onclick = () => rotateCurrentPage(90);
 $("rotatePageCCW").onclick = () => rotateCurrentPage(-90);
+
+let contextObjectId = null;
+function changeGrouping(ungroup = false) {
+  if (busy || pendingDialog || !selection.size) return;
+  const next = clone(state);
+  try {
+    next.entities = ungroup
+      ? ungroupObjects(next.entities, [...selection])
+      : groupObjects(next.entities, [...selection], crypto.randomUUID());
+    if (!ungroup) {
+      const members = expandGroups(next.entities, [...selection]);
+      selection.clear();
+      members.forEach((id) => selection.add(id));
+      selected = null;
+    }
+    commit(next);
+    toast(
+      ungroup
+        ? "Gruppen är upplöst."
+        : "Objekten är grupperade. Ctrl/⌘-klick väljer ett enskilt objekt.",
+    );
+  } catch (e) {
+    error(e);
+  }
+}
+objectMenu = setupObjectMenu({
+  host: $("viewport"),
+  open: (event) => {
+    if (
+      !pdf ||
+      busy ||
+      pendingDialog ||
+      drag ||
+      document.querySelector("dialog[open]")
+    )
+      return null;
+    const id = event.target.closest("[data-id]")?.dataset.id;
+    const hit = state.entities.find(
+      (e) => e.id === id && e.type !== "pdfErase",
+    );
+    contextObjectId = hit?.id || null;
+    if (tool !== "select") setTool("select");
+    if (hit && !selection.has(hit.id)) select(hit.id);
+    if (!selection.size) return null;
+    const chosen = state.entities.filter((e) => selection.has(e.id));
+    const alreadyGrouped =
+      chosen.length > 1 &&
+      chosen.every((e) => e.groupId && e.groupId === chosen[0].groupId);
+    return [
+      {
+        label: "Gruppera",
+        action: "group",
+        disabled: chosen.length < 2 || alreadyGrouped,
+      },
+      {
+        label: "Lös upp grupp",
+        action: "ungroup",
+        disabled: !chosen.some((e) => e.groupId),
+      },
+      ...(hit?.groupId
+        ? [{ label: "Välj enskilt objekt", action: "individual" }]
+        : []),
+    ];
+  },
+  actions: {
+    group: () => changeGrouping(),
+    ungroup: () => changeGrouping(true),
+    individual: () => select(contextObjectId, true),
+  },
+});
