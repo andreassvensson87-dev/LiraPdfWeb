@@ -1,4 +1,11 @@
-import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
+import {
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  degrees,
+  LineCapStyle,
+  PDFName,
+} from "pdf-lib";
 import { applyLineRemovals } from "./pdf-line-edit.js";
 import { blockCorners } from "./pdf-block.js";
 import { entityScale, viewportCaption } from "./viewports.js";
@@ -28,7 +35,46 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
       return { x, y };
     };
     for (const e of entities.filter((e) => e.page === i + 1)) {
-      if (e.type === "viewport" && !e.showLabel) continue;
+      if (e.type === "pdfErase" || (e.type === "viewport" && !e.showLabel))
+        continue;
+      const opacity = e.opacity ?? 1;
+      if (opacity === 0) continue;
+      // Composite each object once, so overlapping segments keep uniform opacity.
+      const bounds = page.getMediaBox();
+      const target =
+        opacity < 1 ? doc.addPage([bounds.width, bounds.height]) : page;
+      if (target !== page)
+        target.setMediaBox(bounds.x, bounds.y, bounds.width, bounds.height);
+      const finish = async () => {
+        if (target === page) return;
+        const embedded = await doc.embedPage(target, {
+          left: bounds.x,
+          bottom: bounds.y,
+          right: bounds.x + bounds.width,
+          top: bounds.y + bounds.height,
+        });
+        await embedded.embed();
+        doc.context
+          .lookup(embedded.ref)
+          .dict.set(
+            PDFName.of("Group"),
+            doc.context.obj({
+              Type: "Group",
+              S: "Transparency",
+              CS: "DeviceRGB",
+              I: true,
+              K: false,
+            }),
+          );
+        page.drawPage(embedded, {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          opacity,
+        });
+        doc.removePage(doc.getPageCount() - 1);
+      };
       if (e.type === "block") {
         let embedded = blocks.get(e.blockPdf);
         if (!embedded) {
@@ -42,7 +88,7 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
           origin = pt(corners[3]),
           right = pt(corners[2]),
           top = pt(corners[0]);
-        page.drawPage(embedded, {
+        target.drawPage(embedded, {
           ...origin,
           width: Math.hypot(right.x - origin.x, right.y - origin.y),
           height: Math.hypot(top.x - origin.x, top.y - origin.y),
@@ -51,6 +97,7 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
               Math.PI,
           ),
         });
+        await finish();
         continue;
       }
       const color = parseColor(e.type === "viewport" ? "#263b35" : e.color);
@@ -58,10 +105,11 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
         ? [viewportCaption(e)]
         : primitives(e, entityScale(e, entities, scales) || 1)) {
         if (shape.kind === "line")
-          page.drawLine({
+          target.drawLine({
             start: pt(shape.a),
             end: pt(shape.b),
             thickness: e.width,
+            ...(e.type === "freehand" ? { lineCap: LineCapStyle.Round } : {}),
             color,
           });
         if (shape.kind === "fill") {
@@ -74,7 +122,7 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
           ].map(pt);
           const minX = Math.min(...points.map((p) => p.x)),
             minY = Math.min(...points.map((p) => p.y));
-          page.drawRectangle({
+          target.drawRectangle({
             x: minX,
             y: minY,
             width: Math.max(...points.map((p) => p.x)) - minX,
@@ -84,7 +132,7 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
         }
         if (shape.kind === "text")
           shape.value.split("\n").forEach((text, j) =>
-            page.drawText(text, {
+            target.drawText(text, {
               ...pt({ x: shape.p.x, y: shape.p.y + j * shape.size * 1.25 }),
               font,
               size: shape.size,
@@ -93,6 +141,7 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
             }),
           );
       }
+      await finish();
     }
   }
   return doc.save();

@@ -139,7 +139,12 @@ export function initializeLiraShell() {
     if (e.target.closest("button")) close();
   });
   document.addEventListener("pointerdown", (e) => {
-    if (!rail.contains(e.target) && !ribbon.contains(e.target)) close();
+    if (
+      !rail.contains(e.target) &&
+      !ribbon.contains(e.target) &&
+      !e.target.closest(".quick-tools")
+    )
+      close();
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !ribbon.hidden) {

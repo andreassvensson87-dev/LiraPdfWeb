@@ -1,4 +1,102 @@
 /* Shared visual dimensions for the Lira family. */
+.quick-tools {
+  position: absolute;
+  z-index: 12;
+  left: 16px;
+  width: 70px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 5px;
+  background: #ffffffed;
+  border: 1px solid #d5dfe1;
+  border-radius: 12px;
+  box-shadow: 0 3px 14px #172b3208;
+  backdrop-filter: blur(8px);
+}
+.quick-tools button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  min-height: 42px;
+  flex-shrink: 0;
+  padding: 8px 3px;
+  margin: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+.quick-tools button:hover {
+  background: #edf3f3;
+}
+.quick-tools button[aria-pressed="true"] {
+  background: #e5eeea;
+}
+.quick-tools button:focus-visible {
+  outline: 2px solid #759a88;
+  outline-offset: -2px;
+}
+.quick-tools svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.quick-tools .quick-manage {
+  color: #647a83;
+  min-height: 34px;
+}
+body[data-lira-app="pdf"] .lira-rail {
+  max-height: calc(100% - 230px);
+}
+.quick-tools-dialog {
+  width: min(440px, calc(100vw - 40px));
+  max-height: 80vh;
+  overflow: auto;
+}
+.quick-tools-dialog form {
+  display: grid;
+  gap: 12px;
+}
+.quick-tools-dialog h2,
+.quick-tools-dialog p {
+  margin: 0;
+}
+.quick-tools-dialog label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.quick-tools-dialog label[hidden] {
+  display: none;
+}
+.quick-tools-dialog input:not([type="color"]),
+.quick-tools-dialog select {
+  min-width: 0;
+  flex: 1;
+}
+.quick-tools-saved {
+  display: grid;
+  gap: 6px;
+}
+.quick-tools-saved > div,
+.quick-tools-actions {
+  display: flex;
+  gap: 6px;
+}
+.quick-tools-saved > div > button:first-child {
+  flex: 1;
+  text-align: left;
+}
+
 body[data-lira-app] > header {
   height: 54px;
   min-height: 54px;

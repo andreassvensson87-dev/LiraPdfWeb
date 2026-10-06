@@ -1,3 +1,6 @@
+import { setupQuickTools } from "./quick-tools.js";
+let quickToolBar;
+import { appendStrokePoint, completeStroke } from "./freehand.js";
 import { pageRotation, normalizeRotation } from "./page-rotation.js";
 import { createDetailRenderer } from "./pdf-detail.js";
 const pdfDetail = createDetailRenderer(document.getElementById("sheet"));
@@ -120,6 +123,7 @@ const tools = [
   ["select", "↖", "Markera", "ESC"],
   ["block", "", "PDF-block", "BLOCK"],
   ["line", "╱", "Linje", "L"],
+  ["freehand", "✎", "Frihand", "FH"],
   ["circle", "○", "Cirkel", "C"],
   ["rect", "▭", "Rektangel", "REC"],
   ["arc", "◜", "Båge", "A"],
@@ -166,6 +170,7 @@ const toolCategories = {
   offset: "edit",
   block: "create",
   line: "create",
+  freehand: "create",
   circle: "create",
   rect: "create",
   arc: "create",
@@ -458,6 +463,7 @@ for (const [id, icon, label, shortcut] of tools) {
     viewport:
       '<rect x="3" y="4" width="18" height="16" stroke-dasharray="3 2"/><path d="M8 9h8v6H8Z"/>',
     select: '<path d="m5 3 14 9-7 1-3 7Z"/>',
+    freehand: '<path d="M3 17c3-10 5 7 8-3s4-10 5-5M14 7l5-5 3 3-5 5-4 1Z"/>',
     line: '<path d="M5 19 19 5"/><rect x="3" y="17" width="4" height="4"/><rect x="17" y="3" width="4" height="4"/>',
     circle: '<circle cx="12" cy="12" r="8"/>',
     rect: '<rect x="3" y="5" width="18" height="14" rx="1"/>',
@@ -487,6 +493,7 @@ function scaleContext(p) {
 }
 function prompt() {
   const steps = {
+    freehand: ["Håll ned och dra för att rita · Esc avslutar"],
     viewport: ["Välj viewportens första hörn", "Välj motsatt hörn"],
     block: ["Klicka för att placera PDF-block · Esc avslutar"],
     line: [
@@ -596,10 +603,33 @@ function drawEntity(e, preview = false) {
   const g = svg("g", {
     "data-id": e.id || "",
     class: "entity",
-    opacity: preview ? 0.55 : 1,
+    opacity: (e.opacity ?? 1) * (preview ? 0.55 : 1),
   });
   const isSelected =
     !preview && (selection.has(e.id) || editOperation?.ids.includes(e.id));
+  if (e.type === "freehand") {
+    const attrs = {
+      points: e.points.map((p) => `${p.x},${p.y}`).join(" "),
+      fill: "none",
+      stroke: isSelected ? "#2879c4" : e.color,
+      "stroke-width": e.width,
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+    };
+    svg("polyline", attrs, g);
+    if (!preview)
+      svg(
+        "polyline",
+        {
+          ...attrs,
+          stroke: "transparent",
+          "stroke-width": Math.max(e.width, 10 / zoom),
+          "pointer-events": "stroke",
+        },
+        g,
+      );
+    return;
+  }
   if (e.type === "viewport") {
     const r = box(...e.points);
     svg(
@@ -765,6 +795,9 @@ function drawEntity(e, preview = false) {
 }
 function style() {
   return {
+    opacity:
+      1 -
+      Math.min(100, Math.max(0, Number($("transparency").value) || 0)) / 100,
     color: $("color").value,
     width: Math.min(20, Math.max(0.2, Number($("width").value) || 1.2)),
     fontSize: Math.min(96, Math.max(4, Number($("fontSize").value) || 12)),
@@ -773,6 +806,7 @@ function style() {
 function paint() {
   if (!viewport) return;
   $("overlay").replaceChildren();
+  if (drag?.kind === "freehand") drawEntity(drag.entity, true);
   if (tool === "eraseText" && hover) {
     const hit = textTargetAt(removableTextTargets, hover);
     if (hit)
@@ -908,6 +942,7 @@ function paint() {
   }
 }
 function refresh() {
+  quickToolBar?.updateActive();
   $("toolname").textContent =
     selection.size > 1
       ? `${selection.size} objekt`
@@ -935,6 +970,12 @@ function refresh() {
     $("blockRotation").value = current().rotation;
   }
   $("styleControls").hidden = !hasStyle;
+  $("transparencyControl").hidden = !(
+    hasStyle ||
+    ["viewport", "block", "mask"].includes(activeType) ||
+    selection.size > 1
+  );
+
   $("selectionHint").hidden =
     hasStyle || ["block", "viewport"].includes(current()?.type);
   $("selectionHint").textContent =
@@ -953,6 +994,14 @@ function refresh() {
                 : activeType === "mask"
                   ? "Vit täckning · originalinnehållet finns kvar"
                   : "Välj ett verktyg eller ett objekt i ritningen";
+  $("lineControl").querySelector("span").textContent =
+    activeType === "freehand" ? "px" : "pt";
+  $("width").setAttribute(
+    "aria-label",
+    activeType === "freehand"
+      ? "Pennbredd i px vid 100 % zoom"
+      : "Linjebredd i pt",
+  );
   $("lineControl").hidden = ["text", "replace", "mask"].includes(activeType);
   $("textControl").hidden = !["text", "replace", "leader", "dim"].includes(
     activeType,
@@ -996,6 +1045,7 @@ function select(id) {
   if (e) {
     $("toolname").textContent = names[e.type];
     for (const key of ["color", "width", "fontSize"]) $(key).value = e[key];
+    $("transparency").value = Math.round((1 - (e.opacity ?? 1)) * 100);
   }
   refresh();
 }
@@ -1357,7 +1407,8 @@ async function closeDocument(id) {
 $("emptyOpen").onclick = () => $("pdfInput").click();
 function pdfLineAt(point) {
   const covered = pageEntities().some((e) => {
-    if (!["mask", "replace"].includes(e.type)) return false;
+    if (!["mask", "replace"].includes(e.type) || (e.opacity ?? 1) < 1)
+      return false;
     const r = box(...e.points);
     return (
       point.x >= r.x &&
@@ -1369,6 +1420,7 @@ function pdfLineAt(point) {
   return covered ? null : nearestSegment(point, pdfSegments, 8 / zoom);
 }
 function localPoint(ev, constrained = true) {
+  if (tool === "freehand") constrained = false;
   const r = $("viewport").getBoundingClientRect();
   let p = {
     x: (ev.clientX - r.left - pan.x) / zoom,
@@ -1443,7 +1495,10 @@ function localPoint(ev, constrained = true) {
       const hit = nearestSnap(raw, pdfSegments, 9 / zoom);
       if (hit) {
         const covered = pageEntities()
-          .filter((e) => ["mask", "replace"].includes(e.type))
+          .filter(
+            (e) =>
+              ["mask", "replace"].includes(e.type) && (e.opacity ?? 1) === 1,
+          )
           .some((e) => {
             const r = box(...e.points);
             return (
@@ -1511,6 +1566,10 @@ function localPoint(ev, constrained = true) {
   return p;
 }
 async function addPoint(p) {
+  if (tool === "freehand") {
+    toast("Håll ned och dra i ritningen för att rita på fri hand.");
+    return;
+  }
   if (busy || pendingDialog || !viewport) return;
   if (tool === "dim" && !points.length && !scaleContext(p).scale) {
     toast(
@@ -1681,6 +1740,7 @@ async function addPoint(p) {
 }
 $("viewport").addEventListener("pointerdown", async (ev) => {
   if (!viewport || pendingDialog || busy) return;
+  if (drag?.kind === "freehand") return;
   if (ev.button === 1 || space) {
     if (space) spacePanned = true;
     ev.preventDefault();
@@ -1694,6 +1754,24 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
   }
   if (ev.button !== 0) return;
   const p = localPoint(ev);
+  if (tool === "freehand") {
+    ev.preventDefault();
+    drag = {
+      kind: "freehand",
+      pointerId: ev.pointerId,
+      entity: {
+        id: crypto.randomUUID(),
+        type: "freehand",
+        page: pageNo,
+        points: [p],
+        ...style(),
+        viewportId: scaleContext(p).owner?.id,
+      },
+    };
+    $("viewport").setPointerCapture(ev.pointerId);
+    paint();
+    return;
+  }
   if (activeGrip) {
     try {
       applyGrip(p);
@@ -1907,6 +1985,23 @@ $("viewport").addEventListener("pointermove", (ev) => {
   if (!viewport) return;
   const p = localPoint(ev, drag?.kind !== "selection");
   $("coords").textContent = `X ${p.x.toFixed(0)} · Y ${p.y.toFixed(0)}`;
+  if (drag?.kind === "freehand") {
+    if (ev.pointerId !== drag.pointerId) return;
+    // Some browsers deliver a released move before pointerup, or lose capture.
+    if (ev.buttons === 0) {
+      finishDrag(ev);
+      return;
+    }
+    const samples = ev.getCoalescedEvents?.();
+    for (const event of samples?.length ? samples : [ev])
+      appendStrokePoint(
+        drag.entity.points,
+        localPoint(event, false),
+        0.5 / zoom,
+      );
+    paint();
+    return;
+  }
   if (drag?.kind === "selection") {
     drag.end = p;
     paint();
@@ -1989,10 +2084,29 @@ $("viewport").addEventListener("pointermove", (ev) => {
   prompt();
   paint();
 });
-function finishDrag(ev, cancel = false) {
+function finishDrag(ev, cancel = false, useFinalPoint = true) {
   if (!drag) return;
+  if (drag.kind === "freehand" && ev.pointerId !== drag.pointerId) return;
   const d = drag;
   drag = null;
+  if (d.kind === "freehand") {
+    if (!cancel) {
+      if (
+        completeStroke(
+          d.entity.points,
+          useFinalPoint ? localPoint(ev, false) : null,
+        )
+      ) {
+        const next = clone(state);
+        next.entities.push(d.entity);
+        commit(next);
+      }
+    }
+    if ($("viewport").hasPointerCapture(ev.pointerId))
+      $("viewport").releasePointerCapture(ev.pointerId);
+    paint();
+    return;
+  }
   if (d.kind === "selection") {
     if (!cancel) {
       const end = localPoint(ev, false);
@@ -2075,7 +2189,18 @@ function finishDrag(ev, cancel = false) {
     $("viewport").releasePointerCapture(ev.pointerId);
 }
 $("viewport").addEventListener("pointerup", (ev) => finishDrag(ev));
+// Also catch release outside the drawing area if native capture was interrupted.
+document.addEventListener(
+  "pointerup",
+  (ev) => {
+    if (drag?.kind === "freehand") finishDrag(ev);
+  },
+  true,
+);
 $("viewport").addEventListener("pointercancel", (ev) => finishDrag(ev, true));
+$("viewport").addEventListener("lostpointercapture", (ev) => {
+  if (drag?.kind === "freehand") finishDrag(ev, false, false);
+});
 $("viewport").addEventListener(
   "wheel",
   (ev) => {
@@ -2118,6 +2243,16 @@ function remove() {
   commit(next);
 }
 
+$("transparency").onchange = () => {
+  const opacity = style().opacity;
+  $("transparency").value = Math.round((1 - opacity) * 100);
+  if (selection.size) {
+    const next = clone(state);
+    for (const e of next.entities) if (selection.has(e.id)) e.opacity = opacity;
+    commit(next);
+  }
+  refresh();
+};
 for (const key of ["color", "width", "fontSize"])
   $(key).onchange = () => {
     if (current()) {
@@ -2685,6 +2820,8 @@ function editCommand(value, number) {
   refresh();
 }
 const aliases = {
+  FH: "freehand",
+  FREEHAND: "freehand",
   RO: "rotate",
   ROTATE: "rotate",
   SC: "scale",
@@ -2876,6 +3013,7 @@ $("command").addEventListener("keydown", (ev) => {
   ev.target.blur();
 });
 window.addEventListener("keydown", (ev) => {
+  if (document.querySelector(".quick-tools-dialog[open]")) return;
   if (
     $("documentPicker").open ||
     $("closeDocumentDialog").open ||
@@ -3015,6 +3153,25 @@ $("pageNumber").onchange = () => {
 };
 
 initializeLiraShell();
+quickToolBar = setupQuickTools({
+  host: document.querySelector("main > .workspace"),
+  tools: tools.filter(([id]) =>
+    ["freehand", "line", "rect", "circle", "arc", "text", "leader"].includes(
+      id,
+    ),
+  ),
+  current: () => ({ tool, ...style() }),
+  canUse: () => !!pdf && !busy && !pendingDialog,
+  activate: (preset) => {
+    setTool(preset.tool);
+    $("color").value = preset.color;
+    $("width").value = preset.width;
+    $("fontSize").value = preset.fontSize;
+    $("transparency").value = Math.round((1 - (preset.opacity ?? 1)) * 100);
+    refresh();
+  },
+  error,
+});
 
 setupPWA(async () => {
   if (

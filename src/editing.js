@@ -2,6 +2,7 @@ import { toCad, fromCad, dist } from "./cad-geometry.js";
 import { polylineOffset } from "./polyline-offset.js";
 import { box, distance } from "./core.js";
 export const editableTypes = [
+  "freehand",
   "polyline",
   "line",
   "circle",
