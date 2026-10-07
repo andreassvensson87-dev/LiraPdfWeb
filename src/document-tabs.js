@@ -8,12 +8,117 @@ export function matchingDocuments(documents, query) {
     words.every((word) => d.name.toLocaleLowerCase("sv-SE").includes(word)),
   );
 }
-export function documentTabs({ getDocuments, getActiveId, activate, close }) {
+export function reorderDocuments(documents, id, targetId, after = false) {
+  if (id === targetId) return documents;
+  const source = documents.find((d) => d.id === id);
+  if (!source || !documents.some((d) => d.id === targetId)) return documents;
+  const next = documents.filter((d) => d.id !== id);
+  const index = next.findIndex((d) => d.id === targetId) + Number(after);
+  next.splice(index, 0, source);
+  return next.every((d, i) => d === documents[i]) ? documents : next;
+}
+
+export function documentTabs({
+  getDocuments,
+  getActiveId,
+  activate,
+  close,
+  reorder,
+}) {
   const tabs = document.getElementById("pages"),
     dialog = document.getElementById("documentPicker"),
     search = document.getElementById("documentSearch"),
     results = document.getElementById("documentResults");
   let matches = [];
+  let draggedId = null,
+    scrollFrame = 0,
+    pointerX = 0,
+    pointerY = 0;
+  function clearDropMarker() {
+    tabs
+      .querySelectorAll("[data-drop-side]")
+      .forEach((item) => delete item.dataset.dropSide);
+  }
+  function finishDrag() {
+    draggedId = null;
+    cancelAnimationFrame(scrollFrame);
+    scrollFrame = 0;
+    clearDropMarker();
+    tabs.querySelector(".is-dragging")?.classList.remove("is-dragging");
+  }
+  function dropTarget() {
+    const items = [...tabs.children].map((item) => ({
+      item,
+      rect: item.getBoundingClientRect(),
+    }));
+    const hit =
+      items.find(({ rect }) => pointerX <= rect.right) || items.at(-1);
+    if (!hit) return null;
+    return {
+      item: hit.item,
+      after: pointerX >= hit.rect.left + hit.rect.width / 2,
+    };
+  }
+  function markDrop() {
+    clearDropMarker();
+    const hit = dropTarget();
+    if (hit && hit.item.dataset.documentId !== draggedId)
+      hit.item.dataset.dropSide = hit.after ? "after" : "before";
+  }
+  function autoScroll() {
+    scrollFrame = 0;
+    if (!draggedId) return;
+    const rect = tabs.getBoundingClientRect();
+    if (pointerY < rect.top || pointerY > rect.bottom) return;
+    const edge = 32;
+    const velocity =
+      pointerX < rect.left + edge
+        ? -12 * Math.min(1, (rect.left + edge - pointerX) / edge)
+        : pointerX > rect.right - edge
+          ? 12 * Math.min(1, (pointerX - rect.right + edge) / edge)
+          : 0;
+    const before = tabs.scrollLeft;
+    tabs.scrollLeft += velocity;
+    if (tabs.scrollLeft === before) return;
+    markDrop();
+    scrollFrame = requestAnimationFrame(autoScroll);
+  }
+  tabs.addEventListener("dragstart", (e) => {
+    const tab = e.target.closest('[role="tab"]');
+    if (!tab || !reorder) {
+      e.preventDefault();
+      return;
+    }
+    draggedId = tab.parentElement.dataset.documentId;
+    tab.parentElement.classList.add("is-dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", draggedId);
+  });
+  tabs.addEventListener("dragover", (e) => {
+    if (!draggedId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    pointerX = e.clientX;
+    pointerY = e.clientY;
+    markDrop();
+    if (!scrollFrame) scrollFrame = requestAnimationFrame(autoScroll);
+  });
+  tabs.addEventListener("dragleave", (e) => {
+    if (tabs.contains(e.relatedTarget)) return;
+    clearDropMarker();
+    cancelAnimationFrame(scrollFrame);
+    scrollFrame = 0;
+  });
+  tabs.addEventListener("drop", (e) => {
+    if (!draggedId) return;
+    e.preventDefault();
+    pointerX = e.clientX;
+    const hit = dropTarget(),
+      id = draggedId;
+    finishDrag();
+    if (hit) reorder(id, hit.item.dataset.documentId, hit.after);
+  });
+  tabs.addEventListener("dragend", finishDrag);
   function choose(id) {
     dialog.close();
     activate(id);
@@ -80,6 +185,27 @@ export function documentTabs({ getDocuments, getActiveId, activate, close }) {
     const buttons = [...tabs.querySelectorAll('[role="tab"]')],
       index = buttons.indexOf(e.target);
     if (index < 0) return;
+    if (
+      reorder &&
+      e.ctrlKey &&
+      e.shiftKey &&
+      ["ArrowLeft", "ArrowRight"].includes(e.key)
+    ) {
+      e.preventDefault();
+      const target = buttons[index + (e.key === "ArrowRight" ? 1 : -1)];
+      if (!target) return;
+      const id = e.target.parentElement.dataset.documentId;
+      reorder(
+        id,
+        target.parentElement.dataset.documentId,
+        e.key === "ArrowRight",
+      );
+      [...tabs.children]
+        .find((item) => item.dataset.documentId === id)
+        ?.querySelector('[role="tab"]')
+        ?.focus();
+      return;
+    }
     let next;
     if (e.key === "ArrowRight") next = (index + 1) % buttons.length;
     else if (e.key === "ArrowLeft")
@@ -92,8 +218,10 @@ export function documentTabs({ getDocuments, getActiveId, activate, close }) {
     buttons[next]?.click();
   });
   return {
-    render() {
+    render({ revealActive = true } = {}) {
+      finishDrag();
       const keepFocus = tabs.contains(document.activeElement);
+      const scrollLeft = tabs.scrollLeft;
       const docs = getDocuments();
       tabs.replaceChildren();
       for (const d of docs) {
@@ -101,14 +229,21 @@ export function documentTabs({ getDocuments, getActiveId, activate, close }) {
         b.className =
           "document-button" + (d.id === getActiveId() ? " active" : "");
         b.textContent = d.name.replace(/\.pdf$/i, "");
-        b.title = d.name;
+        b.title = d.name + (reorder ? "\nDra för att ändra flikordning" : "");
         b.setAttribute("aria-label", d.name);
         b.setAttribute("role", "tab");
         b.setAttribute("aria-selected", String(d.id === getActiveId()));
         b.tabIndex = d.id === getActiveId() ? 0 : -1;
+        b.draggable = !!reorder;
+        if (reorder)
+          b.setAttribute(
+            "aria-keyshortcuts",
+            "Control+Shift+ArrowLeft Control+Shift+ArrowRight",
+          );
         b.onclick = () => activate(d.id);
         const item = document.createElement("div");
         item.className = "document-tab-item";
+        item.dataset.documentId = d.id;
         const x = document.createElement("button");
         x.className = "document-close";
         x.textContent = "×";
@@ -118,13 +253,17 @@ export function documentTabs({ getDocuments, getActiveId, activate, close }) {
         item.append(b, x);
         tabs.append(item);
       }
+      tabs.scrollLeft = scrollLeft;
       const active = tabs.querySelector(".active");
       if (active) {
         if (keepFocus) active.focus({ preventScroll: true });
         const item = active.parentElement;
         const left = item.offsetLeft;
-        if (left < tabs.scrollLeft) tabs.scrollLeft = left;
-        else if (left + item.offsetWidth > tabs.scrollLeft + tabs.clientWidth)
+        if (revealActive && left < tabs.scrollLeft) tabs.scrollLeft = left;
+        else if (
+          revealActive &&
+          left + item.offsetWidth > tabs.scrollLeft + tabs.clientWidth
+        )
           tabs.scrollLeft = left + item.offsetWidth - tabs.clientWidth;
       }
       document.getElementById("pagecount").textContent = String(docs.length);

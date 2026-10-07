@@ -110,7 +110,7 @@ import { findRemovableLine, applyLineRemovals } from "./pdf-line-edit.js";
 import { blockLibrary } from "./block-library.js";
 import { blockPage, blockCorners } from "./pdf-block.js";
 let pendingBlock = null;
-import { documentTabs } from "./document-tabs.js";
+import { documentTabs, reorderDocuments } from "./document-tabs.js";
 import {
   extractSegments,
   nearestSnap,
@@ -1322,6 +1322,13 @@ const documentTabsUI = documentTabs({
   getActiveId: () => activeId,
   activate: activateDocument,
   close: (id) => closeDocument(id).catch(error),
+  reorder: (id, targetId, after) => {
+    const next = reorderDocuments(documents, id, targetId, after);
+    if (next === documents) return;
+    documents.splice(0, documents.length, ...next);
+    documentTabsUI.render({ revealActive: false });
+    autosave();
+  },
 });
 function renderDocuments() {
   documentTabsUI.render();

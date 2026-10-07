@@ -901,10 +901,37 @@ dialog input {
   min-width: 80px;
 }
 .document-tab-item {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   border-right: 1px solid #e4e9e6;
+}
+.document-tab-item.is-dragging {
+  opacity: 0.45;
+}
+.document-tab-item[data-drop-side]::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  background: #258b69;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.document-tab-item[data-drop-side="before"]::after {
+  left: 0;
+}
+.document-tab-item[data-drop-side="after"]::after {
+  right: 0;
+}
+.document-tab-item .document-button[draggable="true"] {
+  cursor: grab;
+}
+.document-tab-item.is-dragging .document-button {
+  cursor: grabbing;
 }
 .document-tab-item:has(.active) {
   background: white;
