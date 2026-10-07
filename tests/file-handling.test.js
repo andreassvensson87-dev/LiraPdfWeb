@@ -40,6 +40,8 @@ test("PDF file association stays inside the installed app scope", () => {
   }
   assert.deepEqual(handler.accept, { "application/pdf": [".pdf"] });
   assert.equal(handler.launch_type, "single-client");
+  // Repeated OS launches must reuse the running app without reloading its tabs.
+  assert.equal(manifest.launch_handler.client_mode, "focus-existing");
 });
 
 test("browsers without file handling keep working", () => {

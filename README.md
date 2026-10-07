@@ -10,7 +10,7 @@ Med Node 22+ och npm: `npm install` och `npm run dev`. Alternativt `pnpm install
 
 ## Standardprogram för PDF i Windows
 
-Webbappen registrerar `.pdf` med File Handling API när den installeras via Microsoft Edge eller Google Chrome i Windows. Öppning från Utforskaren läser PDF:en lokalt och lägger den i en dokumentflik. Flera filer och upprepade öppningar hanteras i ordning. Om ett kommando eller en dialog pågår väntar filen tills arbetet avslutats; appen visar ett meddelande.
+Webbappen registrerar `.pdf` med File Handling API när den installeras via Microsoft Edge eller Google Chrome i Windows. Öppning från Utforskaren läser PDF:en lokalt och lägger den i en dokumentflik. Om appen redan är öppen återanvänds dess fönster utan omladdning, genom manifestets `launch_handler` med `focus-existing`. Flera filer och upprepade öppningar hanteras i ordning. Om ett kommando eller en dialog pågår väntar filen tills arbetet avslutats; appen visar ett meddelande.
 
 1. Öppna den publicerade HTTPS-adressen i Edge eller Chrome och välj **Installera app** eller webbläsarens installationsknapp.
 2. Tillåt att LiraPDF öppnar PDF-filer när webbläsaren frågar.
