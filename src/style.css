@@ -406,10 +406,65 @@ main {
   display: flex;
   flex-direction: column;
 }
+#documentView {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  grid-template-rows: minmax(0, 1fr) 16px;
+  flex: 1;
+  min-width: 0;
+  min-height: 120px;
+}
+.document-scrollbar {
+  position: relative;
+  background: #dbe5df;
+  border: 0;
+  touch-action: none;
+  user-select: none;
+  cursor: pointer;
+}
+.document-scrollbar.vertical {
+  grid-column: 2;
+  grid-row: 1;
+}
+.document-scrollbar.horizontal {
+  grid-column: 1;
+  grid-row: 2;
+}
+.scrollbar-thumb {
+  position: absolute;
+  border-radius: 5px;
+  background: #7c9f92;
+  pointer-events: none;
+}
+.vertical .scrollbar-thumb {
+  width: 10px;
+  left: 3px;
+}
+.horizontal .scrollbar-thumb {
+  height: 10px;
+  top: 3px;
+}
+.document-scrollbar:hover .scrollbar-thumb,
+.document-scrollbar.is-dragging .scrollbar-thumb {
+  background: #477e69;
+}
+.document-scrollbar[aria-disabled="true"] {
+  cursor: default;
+}
+.document-scrollbar[aria-disabled="true"] .scrollbar-thumb {
+  background: #b9ccc3;
+}
+.document-scrollbar:focus-visible {
+  outline: 2px solid #258b69;
+  outline-offset: -2px;
+}
+.scrollbar-corner {
+  background: #b9ccc3;
+}
 #viewport {
   position: relative;
   flex: 1;
-  min-height: 120px;
+  min-height: 0;
   overflow: hidden;
   background: #e5e9e7;
   touch-action: none;

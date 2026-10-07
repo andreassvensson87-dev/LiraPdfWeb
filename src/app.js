@@ -12,6 +12,7 @@ let quickToolBar;
 import { appendStrokePoint, completeStroke } from "./freehand.js";
 import { pageRotation, normalizeRotation } from "./page-rotation.js";
 import { createDocumentScroll, scrollPosition } from "./document-scroll.js";
+import { documentScrollMetrics, setupScrollbars } from "./scrollbars.js";
 import { createDetailRenderer } from "./pdf-detail.js";
 const pdfDetail = createDetailRenderer(document.getElementById("sheet"));
 import { setupPWA } from "./pwa.js";
@@ -1105,6 +1106,32 @@ const documentScroll = createDocumentScroll($("viewport"), {
     }
   },
 });
+function scrollMetrics() {
+  return viewport
+    ? documentScrollMetrics(
+        documentScroll.getLayout(),
+        pageNo,
+        pan,
+        zoom,
+        $("viewport").clientWidth,
+        $("viewport").clientHeight,
+      )
+    : null;
+}
+const scrollbars = setupScrollbars({
+  horizontal: $("horizontalScrollbar"),
+  vertical: $("verticalScrollbar"),
+  getMetrics: scrollMetrics,
+  canScroll: () =>
+    !!viewport &&
+    (!busy || scrollLoading) &&
+    !pendingDialog &&
+    !drag &&
+    !points.length &&
+    !editOperation &&
+    !activeGrip,
+  scrollTo: scrollToPosition,
+});
 function view() {
   if (!viewport) return;
   const rotated = displayedPage();
@@ -1138,6 +1165,7 @@ function view() {
     rotations: state.rotations,
     revision: state,
   });
+  scrollbars.update();
 }
 function fit() {
   if (!viewport) return;
@@ -1302,6 +1330,7 @@ async function showPage(n, keepView = false, scrollPan = null) {
     await editedPdf?.destroy();
     if (token === epoch) {
       busy = false;
+      view();
       library.refresh();
       autosave();
     }
@@ -1412,6 +1441,7 @@ function emptyWorkspace() {
   editOperation = null;
   ++epoch;
   activeId = pdf = bytes = viewport = null;
+  scrollbars.update();
   state = { entities: [], scales: {} };
   undoStack = [];
   redoStack = [];
@@ -2306,6 +2336,21 @@ $("viewport").addEventListener("lostpointercapture", (ev) => {
 });
 let scrollLoading = false;
 let queuedScroll = { x: 0, y: 0 };
+let queuedScrollbarPosition = {};
+function scrollToPosition(position) {
+  if (scrollLoading) {
+    queuedScrollbarPosition = { ...queuedScrollbarPosition, ...position };
+    queuedScroll = { x: 0, y: 0 };
+    return;
+  }
+  const metrics = scrollMetrics();
+  if (!metrics) return;
+  const delta = (axis) =>
+    position[axis] === undefined
+      ? 0
+      : position[axis] * metrics[axis].range - metrics[axis].offset;
+  scrollDocument(delta("x"), delta("y"));
+}
 async function scrollDocument(dx, dy) {
   if (scrollLoading) {
     queuedScroll.x += dx;
@@ -2337,7 +2382,10 @@ async function scrollDocument(dx, dy) {
     scrollLoading = false;
     const queued = queuedScroll;
     queuedScroll = { x: 0, y: 0 };
-    if (queued.x || queued.y) scrollDocument(queued.x, queued.y);
+    const position = queuedScrollbarPosition;
+    queuedScrollbarPosition = {};
+    if (Object.keys(position).length) scrollToPosition(position);
+    else if (queued.x || queued.y) scrollDocument(queued.x, queued.y);
   }
 }
 $("viewport").addEventListener(

@@ -254,33 +254,62 @@
         <div id="pages" role="tablist" aria-label="Dokument"></div>
       </aside>
       <section class="workspace">
-        <div id="viewport">
+        <div id="documentView">
+          <div id="viewport">
+            <div
+              class="page-navigation"
+              role="group"
+              aria-label="Sidnavigering"
+              title="Skrolla för att läsa · Ctrl + skroll för att zooma"
+            >
+              <button id="prevPage" aria-label="Föregående sida">‹</button
+              ><label
+                >Sida
+                <input
+                  id="pageNumber"
+                  type="number"
+                  min="1"
+                  value="1"
+                  aria-label="Aktuell sida" /></label
+              ><span id="pageTotal">av 1</span
+              ><button id="nextPage" aria-label="Nästa sida">›</button>
+            </div>
+            <div id="emptyWorkspace" hidden>
+              <strong>Inget dokument öppet</strong
+              ><button id="emptyOpen">Öppna PDF</button>
+            </div>
+            <div id="sheet">
+              <canvas id="pdfcanvas"></canvas
+              ><svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+          </div>
           <div
-            class="page-navigation"
-            role="group"
-            aria-label="Sidnavigering"
-            title="Skrolla för att läsa · Ctrl + skroll för att zooma"
+            id="verticalScrollbar"
+            class="document-scrollbar vertical"
+            role="scrollbar"
+            aria-label="Skrolla i dokumentet"
+            aria-orientation="vertical"
+            aria-controls="viewport"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
           >
-            <button id="prevPage" aria-label="Föregående sida">‹</button
-            ><label
-              >Sida
-              <input
-                id="pageNumber"
-                type="number"
-                min="1"
-                value="1"
-                aria-label="Aktuell sida" /></label
-            ><span id="pageTotal">av 1</span
-            ><button id="nextPage" aria-label="Nästa sida">›</button>
+            <div class="scrollbar-thumb"></div>
           </div>
-          <div id="emptyWorkspace" hidden>
-            <strong>Inget dokument öppet</strong
-            ><button id="emptyOpen">Öppna PDF</button>
+          <div
+            id="horizontalScrollbar"
+            class="document-scrollbar horizontal"
+            role="scrollbar"
+            aria-label="Skrolla i sidled"
+            aria-orientation="horizontal"
+            aria-controls="viewport"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          >
+            <div class="scrollbar-thumb"></div>
           </div>
-          <div id="sheet">
-            <canvas id="pdfcanvas"></canvas
-            ><svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
-          </div>
+          <div class="scrollbar-corner" aria-hidden="true"></div>
         </div>
         <div class="command">
           <span>›</span
