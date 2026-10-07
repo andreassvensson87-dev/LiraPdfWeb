@@ -11,6 +11,7 @@ import { setupQuickTools } from "./quick-tools.js";
 let quickToolBar;
 import { appendStrokePoint, completeStroke } from "./freehand.js";
 import { pageRotation, normalizeRotation } from "./page-rotation.js";
+import { createDocumentScroll, scrollPosition } from "./document-scroll.js";
 import { createDetailRenderer } from "./pdf-detail.js";
 const pdfDetail = createDetailRenderer(document.getElementById("sheet"));
 import { setupPWA } from "./pwa.js";
@@ -612,14 +613,20 @@ function svg(tag, attrs, parent = $("overlay")) {
   parent.append(n);
   return n;
 }
-function drawEntity(e, preview = false) {
-  const g = svg("g", {
-    "data-id": e.id || "",
-    class: "entity",
-    opacity: (e.opacity ?? 1) * (preview ? 0.55 : 1),
-  });
+function drawEntity(e, preview = false, parent = $("overlay")) {
+  const g = svg(
+    "g",
+    {
+      "data-id": e.id || "",
+      class: "entity",
+      opacity: (e.opacity ?? 1) * (preview ? 0.55 : 1),
+    },
+    parent,
+  );
   const isSelected =
-    !preview && (selection.has(e.id) || editOperation?.ids.includes(e.id));
+    parent === $("overlay") &&
+    !preview &&
+    (selection.has(e.id) || editOperation?.ids.includes(e.id));
   if (e.type === "freehand") {
     const attrs = {
       points: e.points.map((p) => `${p.x},${p.y}`).join(" "),
@@ -988,6 +995,7 @@ function refresh() {
     ["viewport", "block", "mask"].includes(activeType) ||
     selection.size > 1
   );
+  $("transparencyValue").value = `${$("transparency").value} %`;
 
   $("selectionHint").hidden =
     hasStyle || ["block", "viewport"].includes(current()?.type);
@@ -1072,6 +1080,31 @@ function displayedPage() {
     state.rotations?.[pageNo] || 0,
   );
 }
+const documentScroll = createDocumentScroll($("viewport"), {
+  changed: () => {
+    if (!busy) view();
+  },
+  onError: error,
+  drawAnnotations: (page, overlay) => {
+    for (const entity of state.entities
+      .filter((e) => e.page === page && e.type !== "pdfErase")
+      .sort((a, b) => (a.type !== "viewport") - (b.type !== "viewport")))
+      drawEntity(entity, false, overlay);
+  },
+  getPreviewPage: async (n) => {
+    if (!state.entities.some((e) => e.type === "pdfErase" && e.page === n))
+      return { page: await pdf.getPage(n) };
+    const edited = await loadPdf(
+      await applyLineRemovals(bytes, state.entities),
+    );
+    try {
+      return { page: await edited.getPage(n), release: () => edited.destroy() };
+    } catch (e) {
+      await edited.destroy();
+      throw e;
+    }
+  },
+});
 function view() {
   if (!viewport) return;
   const rotated = displayedPage();
@@ -1097,6 +1130,14 @@ function view() {
     dpr: window.devicePixelRatio || 1,
   });
   paint();
+  documentScroll.update({
+    pdf,
+    page: pageNo,
+    pan,
+    zoom,
+    rotations: state.rotations,
+    revision: state,
+  });
 }
 function fit() {
   if (!viewport) return;
@@ -1155,7 +1196,7 @@ function zoomAt(
   zoom = next;
   view();
 }
-async function showPage(n, keepView = false) {
+async function showPage(n, keepView = false, scrollPan = null) {
   objectMenu?.close();
   if (
     !pdf ||
@@ -1251,6 +1292,7 @@ async function showPage(n, keepView = false) {
     const detailSource = editedPdf;
     pdfDetail.setPage(page, detailSource ? () => detailSource.destroy() : null);
     editedPdf = null;
+    if (scrollPan) pan = scrollPan;
     if (keepView) view();
     else fit();
     refresh();
@@ -1358,6 +1400,7 @@ function saveDocument(d) {
   autosave();
 }
 function emptyWorkspace() {
+  documentScroll.clear();
   pdfDetail.clear().catch(error);
   editOperation = null;
   ++epoch;
@@ -1756,6 +1799,7 @@ async function addPoint(p) {
   }
 }
 $("viewport").addEventListener("pointerdown", async (ev) => {
+  if (ev.target.closest(".page-navigation")) return;
   if (!viewport || pendingDialog || busy) return;
   if (drag?.kind === "freehand") return;
   if (ev.button === 1 || space) {
@@ -1770,6 +1814,18 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
     return;
   }
   if (ev.button !== 0) return;
+  const neighbouringPage = ev.target.closest(".document-page-preview");
+  if (neighbouringPage) {
+    const layout = documentScroll.getLayout();
+    const target = layout[Number(neighbouringPage.dataset.page) - 1];
+    const anchor = layout[pageNo - 1];
+    if (target && anchor)
+      await showPage(target.page, true, {
+        x: pan.x + ((anchor.width - target.width) * zoom) / 2,
+        y: pan.y + (target.top - anchor.top) * zoom,
+      });
+    return;
+  }
   const p = localPoint(ev);
   if (tool === "freehand") {
     ev.preventDefault();
@@ -2241,16 +2297,62 @@ $("viewport").addEventListener("pointercancel", (ev) => finishDrag(ev, true));
 $("viewport").addEventListener("lostpointercapture", (ev) => {
   if (drag?.kind === "freehand") finishDrag(ev, false, false);
 });
+let scrollLoading = false;
+let queuedScroll = { x: 0, y: 0 };
+async function scrollDocument(dx, dy) {
+  if (scrollLoading) {
+    queuedScroll.x += dx;
+    queuedScroll.y += dy;
+    return;
+  }
+  const layout = documentScroll.getLayout();
+  if (!layout.length) {
+    pan = { x: pan.x - dx, y: pan.y - dy };
+    view();
+    return;
+  }
+  const position = scrollPosition(
+    layout,
+    pageNo,
+    pan,
+    zoom,
+    dx,
+    dy,
+    $("viewport").clientHeight,
+  );
+  pan = position.currentPan;
+  view();
+  if (position.page === pageNo) return;
+  scrollLoading = true;
+  try {
+    await showPage(position.page, true, position.pan);
+  } finally {
+    scrollLoading = false;
+    const queued = queuedScroll;
+    queuedScroll = { x: 0, y: 0 };
+    if (queued.x || queued.y) scrollDocument(queued.x, queued.y);
+  }
+}
 $("viewport").addEventListener(
   "wheel",
   (ev) => {
     ev.preventDefault();
+    if (!viewport || (busy && !scrollLoading) || pendingDialog || drag) return;
     const r = $("viewport").getBoundingClientRect();
-    zoomAt(
-      Math.exp(-ev.deltaY * 0.0015),
-      ev.clientX - r.left,
-      ev.clientY - r.top,
-    );
+    const unit = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? r.height : 1;
+    if (ev.ctrlKey) {
+      if (busy) return;
+      zoomAt(
+        Math.exp(-ev.deltaY * unit * 0.0015),
+        ev.clientX - r.left,
+        ev.clientY - r.top,
+      );
+      return;
+    }
+    if (points.length || editOperation || activeGrip) return;
+    const dx = (ev.shiftKey && !ev.deltaX ? ev.deltaY : ev.deltaX) * unit;
+    const dy = (ev.shiftKey ? 0 : ev.deltaY) * unit;
+    scrollDocument(dx, dy);
   },
   { passive: false },
 );
@@ -2283,6 +2385,13 @@ function remove() {
   commit(next);
 }
 
+$("transparency").oninput = () => {
+  $("transparencyValue").value = `${$("transparency").value} %`;
+  // Preview on the SVG; commit once on release so one drag is one undo step.
+  const opacity = style().opacity;
+  for (const node of $("overlay").querySelectorAll("g.entity[data-id]"))
+    if (selection.has(node.dataset.id)) node.setAttribute("opacity", opacity);
+};
 $("transparency").onchange = () => {
   const opacity = style().opacity;
   $("transparency").value = Math.round((1 - opacity) * 100);

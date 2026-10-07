@@ -4,11 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>LiraPDF</title>
-  <link rel="icon" href="./lira-icon.svg" type="image/svg+xml"><link rel="icon" href="./favicon-32.png" type="image/png" sizes="32x32"><link rel="apple-touch-icon" href="./apple-touch-icon.png"><link rel="stylesheet" href="./src/lira-shell.css"><link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#192f35"></head>
+    <link rel="icon" href="./lira-icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="./favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="stylesheet" href="./src/lira-shell.css" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#192f35" />
+  </head>
   <body data-lira-app="pdf">
     <header>
       <a class="brand" href="#" aria-label="LiraPDF"
-        ><img class="brand-logo" src="./lira-icon.svg" width="32" height="32" alt="" aria-hidden="true"><strong>Lira<span>PDF</span></strong></a
+        ><img
+          class="brand-logo"
+          src="./lira-icon.svg"
+          width="32"
+          height="32"
+          alt=""
+          aria-hidden="true"
+        /><strong>Lira<span>PDF</span></strong></a
       >
       <details id="fileMenu" class="file-menu">
         <summary>Arkiv <span>⌄</span></summary>
@@ -105,8 +118,15 @@
       >
         Kalibrera
       </button>
-      <button id="rotatePageCW" hidden title="Rotera aktuell sida 90° medurs"><svg viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2 8M20 4v6h-6"/></svg>Rotera sida medurs</button>
-      <button id="rotatePageCCW" hidden title="Rotera aktuell sida 90° moturs"><svg viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 2 8M4 4v6h6"/></svg>Rotera sida moturs</button>
+      <button id="rotatePageCW" hidden title="Rotera aktuell sida 90° medurs">
+        <svg viewBox="0 0 24 24">
+          <path d="M20 10a8 8 0 1 0-2 8M20 4v6h-6" /></svg
+        >Rotera sida medurs
+      </button>
+      <button id="rotatePageCCW" hidden title="Rotera aktuell sida 90° moturs">
+        <svg viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 2 8M4 4v6h6" /></svg
+        >Rotera sida moturs
+      </button>
       <div class="viewtools">
         <button id="fit" title="Anpassa PDF-sidan">Anpassa</button
         ><button
@@ -149,7 +169,21 @@
           /><span>pt</span></label
         >
       </div>
-      <label id="transparencyControl" hidden>Genomskinlighet<input id="transparency" aria-label="Genomskinlighet i procent" type="number" min="0" max="100" step="1" value="0" /><span>%</span></label>
+      <div id="transparencyControl" hidden>
+        <div class="property-range-heading">
+          <label for="transparency">Genomskinlighet</label>
+          <output id="transparencyValue" for="transparency">0 %</output>
+        </div>
+        <input
+          id="transparency"
+          aria-label="Genomskinlighet i procent"
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value="0"
+        />
+      </div>
       <div id="viewportControls" hidden>
         <label
           >Namn
@@ -218,22 +252,27 @@
           ><span id="pagecount">1</span><span aria-hidden="true">⌄</span>
         </button>
         <div id="pages" role="tablist" aria-label="Dokument"></div>
-        <div class="page-navigation">
-          <button id="prevPage" aria-label="Föregående sida">‹</button
-          ><label
-            >Sida
-            <input
-              id="pageNumber"
-              type="number"
-              min="1"
-              value="1"
-              aria-label="Aktuell sida" /></label
-          ><span id="pageTotal">av 1</span
-          ><button id="nextPage" aria-label="Nästa sida">›</button>
-        </div>
       </aside>
       <section class="workspace">
         <div id="viewport">
+          <div
+            class="page-navigation"
+            role="group"
+            aria-label="Sidnavigering"
+            title="Skrolla för att läsa · Ctrl + skroll för att zooma"
+          >
+            <button id="prevPage" aria-label="Föregående sida">‹</button
+            ><label
+              >Sida
+              <input
+                id="pageNumber"
+                type="number"
+                min="1"
+                value="1"
+                aria-label="Aktuell sida" /></label
+            ><span id="pageTotal">av 1</span
+            ><button id="nextPage" aria-label="Nästa sida">›</button>
+          </div>
           <div id="emptyWorkspace" hidden>
             <strong>Inget dokument öppet</strong
             ><button id="emptyOpen">Öppna PDF</button>

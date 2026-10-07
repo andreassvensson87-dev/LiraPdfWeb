@@ -21,7 +21,7 @@ En vanlig webbläsarflik registreras inte som standardprogram. En befintlig inst
 
 ## Genomskinlighet
 
-**Egenskaper → Genomskinlighet** gäller för alla tillagda objekt, inklusive frihand, text, mått, maskningar, viewportetiketter och PDF-block. 0 % är helt täckande och 100 % är helt osynligt. Välj ett eller flera objekt för att ändra deras genomskinlighet, eller ställ in värdet innan du ritar. Värdet kan också sparas i egna snabbverktyg. Äldre projekt och snabbverktyg är helt täckande som tidigare. PDF-exporten applicerar genomskinligheten en gång per objekt så att överlappande delar av samma objekt behåller jämn färg.
+**Egenskaper → Genomskinlighet** gäller för alla tillagda objekt, inklusive frihand, text, mått, maskningar, viewportetiketter och PDF-block. Dra reglaget för att justera värdet; procenten visas bredvid rubriken och valda objekt förhandsvisas under draget. Ett helt drag ger ett ångrasteg. 0 % är helt täckande och 100 % är helt osynligt. Välj ett eller flera objekt för att ändra deras genomskinlighet, eller ställ in värdet innan du ritar. Värdet kan också sparas i egna snabbverktyg. Äldre projekt och snabbverktyg är helt täckande som tidigare. PDF-exporten applicerar genomskinligheten en gång per objekt så att överlappande delar av samma objekt behåller jämn färg.
 
 ## Frihand och egna snabbverktyg
 
@@ -31,7 +31,7 @@ Välj **Rita → Frihand** eller skriv `FH`. Håll ned musknappen eller pennan o
 
 ## Arbetsyta
 
-Ritningen fyller arbetsytan. Verktygsegenskaper visas i raden ovanför ritningen och anpassas efter valt verktyg eller objekt. Markeringslistan är borttagen; välj och redigera objekt direkt i ritningen. Kompakta dokumentflikar ligger ovanför ritningen. Varje flik har ett kryss för att stänga dokumentet. Vid ändringar kan du spara en projektfil, stänga utan att spara eller avbryta. När den aktiva fliken stängs visas närmaste kvarvarande dokument; sista fliken lämnar en tom arbetsyta. Rulla horisontellt med mushjul/styrplatta; håll pekaren över en flik för fullständigt filnamn. Knappen med dokumentantal öppnar en sökbar lista. Sök med flera ord, välj med pil upp/ned och Enter. Flikraden kan navigeras med vänster/höger samt Home/End. Öppna flera PDF:er samtidigt via Arkiv. Varje dokument har egen sidposition, markeringar, skala och ångrahistorik. Sidbyte görs med pilarna eller sidnummerfältet till höger; sidnumret visas även i statusraden. Flikraden kan döljas utan att sidnavigationen försvinner. PDF- och projektöppning finns under **Arkiv**.
+Ritningen fyller arbetsytan. Verktygsegenskaper visas i raden ovanför ritningen och anpassas efter valt verktyg eller objekt. Markeringslistan är borttagen; välj och redigera objekt direkt i ritningen. Kompakta dokumentflikar ligger ovanför ritningen. Varje flik har ett kryss för att stänga dokumentet. Vid ändringar kan du spara en projektfil, stänga utan att spara eller avbryta. När den aktiva fliken stängs visas närmaste kvarvarande dokument; sista fliken lämnar en tom arbetsyta. Rulla horisontellt med mushjul/styrplatta; håll pekaren över en flik för fullständigt filnamn. Knappen med dokumentantal öppnar en sökbar lista. Sök med flera ord, välj med pil upp/ned och Enter. Flikraden kan navigeras med vänster/höger samt Home/End. Öppna flera PDF:er samtidigt via Arkiv. Varje dokument har egen sidposition, markeringar, skala och ångrahistorik. Sidorna visas i ett sammanhängande flöde. Skrolla för att läsa dokumentet eller använd pilarna och sidnummerfältet i den flytande rutan centrerad längst ned; sidnumret visas även i statusraden. Flikraden kan döljas utan att sidnavigationen försvinner. PDF- och projektöppning finns under **Arkiv**.
 
 ## Verktygsflikar
 
@@ -57,7 +57,7 @@ Markera, ångra/gör om och zoom är alltid tillgängliga. Kommandon öppnar rä
 - `F10` växlar POLAR. Välj 15°, 30°, 45° eller 90° i statusraden. Nära en sådan vinkel följer linjer, mått, hänvisningslinjer och cirkelradier en grön hjälplinje. Inmatade längder följer riktningen och aktuell skala. POLAR och ORTHO ersätter varandra.
 - `F11` växlar OTRACK. Stanna cirka en halv sekund över en snappunkt för att spara den som referens. Blå hjälplinjer låter dig rikta in nästa punkt vågrätt eller lodrätt mot de två senaste referenspunkterna, även i deras skärning. Direktsnappning har företräde, därefter ORTHO/POLAR och sedan OTRACK. Referenserna rensas när objektet är klart, verktyget byts eller Escape trycks.
 - Escape återgår till markering. Dra ett objekt för att flytta det, eller dra dess grips för att ändra formen. Dubbelklicka på text/leader för att redigera.
-- Hjul zoomar kring pekaren. Mellanslag + dra eller mittenknapp panorerar. `Z` + Enter anpassar vyn.
+- Hjul skrollar genom dokumentet. Ctrl + hjul zoomar kring pekaren. Shift + hjul skrollar horisontellt. Mellanslag + dra eller mittenknapp panorerar. `Z` + Enter anpassar vyn.
 - Delete tar bort valt objekt. Cmd/Ctrl+Z ångrar, Cmd/Ctrl+Shift+Z gör om. `U` + Enter ångrar också.
 
 ## Visuell maskning
