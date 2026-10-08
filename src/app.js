@@ -261,6 +261,7 @@ for (const button of document.querySelectorAll("[data-category]")) {
 const names = Object.fromEntries(tools.map((t) => [t[0], t[2]]));
 Object.assign(names, {
   polyline: "Polylinje",
+  ellipse: "Ellips",
   calibrate: "Kalibrera",
   replace: "Täck och ersätt",
 });

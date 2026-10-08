@@ -95,6 +95,19 @@ export function primitives(e, scale) {
       ps.slice(1).forEach((p, i) => line(ps[i], p));
       break;
     }
+    case "ellipse": {
+      const r = box(a, b),
+        center = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+      if (r.w < 1e-7 || r.h < 1e-7)
+        throw Error("Ellipsen måste ha bredd och höjd.");
+      const ps = Array.from({ length: 97 }, (_, i) => ({
+        x: center.x + (r.w / 2) * Math.cos((i * Math.PI) / 48),
+        y: center.y + (r.h / 2) * Math.sin((i * Math.PI) / 48),
+      }));
+      fill(ps);
+      ps.slice(1).forEach((p, i) => line(ps[i], p));
+      break;
+    }
     case "arc": {
       const ps = arcPoints(a, b, c);
       ps.slice(1).forEach((p, i) => line(ps[i], p));
@@ -166,6 +179,7 @@ export function validateProject(p) {
     line: 2,
     rect: 2,
     circle: 2,
+    ellipse: 2,
     arc: 3,
     leader: 3,
     text: 1,
@@ -193,7 +207,7 @@ export function validateProject(p) {
       (e.fillColor !== undefined &&
         (!/^#[0-9a-f]{6}$/i.test(e.fillColor) ||
           !(
-            ["circle", "rect"].includes(e.type) ||
+            ["circle", "ellipse", "rect"].includes(e.type) ||
             (e.type === "polyline" && e.closed)
           ))) ||
       (e.opacity !== undefined &&

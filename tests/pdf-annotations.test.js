@@ -533,7 +533,7 @@ test("v2 saved Lira circles migrate without disappearing or creating duplicate s
   );
 });
 
-test("ovals and measured polygons remain unchanged instead of being distorted or losing measurement semantics", async () => {
+test("ovals import as ellipses while measured polygons retain their measurement semantics", async () => {
   const doc = await document();
   add(doc, { Subtype: "Circle", Rect: [10, 20, 110, 70] });
   add(doc, {
@@ -542,5 +542,115 @@ test("ovals and measured polygons remain unchanged instead of being distorted or
     IC: [],
     Measure: { Type: "Measure", Subtype: "RL" },
   });
-  assert.equal(await readEditablePdf(await doc.save()), null);
+  const imported = await readEditablePdf(await doc.save());
+  assert.equal(imported.state.entities.length, 1);
+  assert.equal(imported.state.entities[0].type, "ellipse");
+  assert.equal(
+    (await PDFDocument.load(imported.bytes)).getPage(0).node.Annots().size(),
+    1,
+  );
+});
+
+test("Bluebeam open polylines with IC and no border dictionary import without being filled or closed", async () => {
+  const doc = await document();
+  add(doc, {
+    Subtype: "PolyLine",
+    NM: PDFString.of("bluebeam-path"),
+    Vertices: [
+      1072.275, 354.5907, 1242.097, 482.9724, 1420.856, 391.1552, 1286.502,
+      300.1504, 1072.275, 300.1504,
+    ],
+    IC: [1, 0, 0],
+  });
+  const original = annots(doc)[0];
+  original.delete(k("BS"));
+  const imported = await readEditablePdf(await doc.save()),
+    polyline = imported.state.entities[0];
+  assert.equal(polyline.type, "polyline");
+  assert.equal(polyline.points.length, 5);
+  assert.equal(polyline.closed, false);
+  assert.equal(polyline.fillColor, undefined);
+  assert.equal(polyline.width, 1);
+  const source = await PDFDocument.load(imported.bytes),
+    saved = await PDFDocument.load(
+      await saveEditablePdf(imported.bytes, imported.state, viewer(source)),
+    );
+  assert.equal(annots(saved)[0].lookup(k("Subtype")).toString(), "/PolyLine");
+  const ap = new TextDecoder().decode(
+    decodePDFRawStream(
+      annots(saved)[0].lookup(k("AP"), PDFDict).lookup(k("N")),
+    ).decode(),
+  );
+  assert.match(ap, /S Q/);
+  assert.doesNotMatch(ap, /B Q|h\n/);
+  assert.deepEqual(
+    (await readEditablePdf(await saved.save())).state.entities[0].points,
+    polyline.points,
+  );
+});
+
+test("Bluebeam near-circles keep both ellipse axes through move, resizing, saving and reopening", async () => {
+  const doc = await document();
+  add(doc, {
+    Subtype: "Circle",
+    NM: PDFString.of("bluebeam-ellipse"),
+    Rect: [1595.052, 241.1473, 1712.246, 355.0907],
+    RD: [0.5, 0.5, 0.5, 0.5],
+  });
+  const imported = await readEditablePdf(await doc.save()),
+    ellipse = imported.state.entities[0];
+  assert.equal(ellipse.type, "ellipse");
+  const before = structuredClone(ellipse.points);
+  ellipse.points = ellipse.points.map((p) => ({ x: p.x + 10, y: p.y + 20 }));
+  ellipse.points[1].x += 15;
+  const source = await PDFDocument.load(imported.bytes),
+    saved = await PDFDocument.load(
+      await saveEditablePdf(imported.bytes, imported.state, viewer(source)),
+    );
+  assert.equal(annots(saved)[0].lookup(k("Subtype")).toString(), "/Circle");
+  const result = (await readEditablePdf(await saved.save())).state.entities[0];
+  assert.equal(result.type, "ellipse");
+  for (let i = 0; i < 2; i++)
+    for (const axis of ["x", "y"])
+      assert.ok(
+        Math.abs(result.points[i][axis] - ellipse.points[i][axis]) < 1e-7,
+      );
+  assert.ok(
+    Math.abs(result.points[1].x - result.points[0].x) >
+      Math.abs(before[1].x - before[0].x),
+  );
+});
+
+test("ellipse geometry and fill round-trip on rotated, cropped, scaled pages with private metadata removed", async () => {
+  for (const rotation of [0, 90, 180, 270]) {
+    const doc = await document();
+    doc.getPage(0).setCropBox(10, 20, 150, 220);
+    doc.getPage(0).setRotation(degrees(rotation));
+    doc.getPage(0).node.set(k("UserUnit"), PDFNumber.of(2));
+    const ellipse = {
+      ...entity("ellipse"),
+      points: [
+        { x: 20, y: 30 },
+        { x: 110, y: 80 },
+      ],
+      fillColor: "#00ff00",
+    };
+    const saved = await PDFDocument.load(
+      await saveEditablePdf(
+        await doc.save(),
+        { entities: [ellipse], scales: {} },
+        viewer(doc),
+      ),
+    );
+    saved.catalog.delete(k("LiraPDF"));
+    const result = (await readEditablePdf(await saved.save())).state
+      .entities[0];
+    assert.equal(result.type, "ellipse");
+    assert.equal(result.fillColor, "#00ff00");
+    for (const axis of ["x", "y"])
+      assert.deepEqual(
+        result.points.map((p) => p[axis]).sort((a, b) => a - b),
+        ellipse.points.map((p) => p[axis]).sort((a, b) => a - b),
+      );
+  }
 });

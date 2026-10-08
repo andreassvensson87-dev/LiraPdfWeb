@@ -6,6 +6,7 @@ export const editableTypes = [
   "polyline",
   "line",
   "circle",
+  "ellipse",
   "rect",
   "arc",
   "text",

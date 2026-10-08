@@ -112,7 +112,7 @@ function annotationColor(channels) {
 
 function parseAnnotation(annotation, page, pageNo, metadata, id) {
   const subtype = value(annotation, "Subtype")?.toString();
-  const type = {
+  let type = {
     "/Line": "line",
     "/PolyLine": "polyline",
     "/Polygon": "polyline",
@@ -204,7 +204,9 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
   const interior = numbers(value(annotation, "IC"));
   if (annotation.has(key("IC")) && !interior) return null;
   let fillColor;
-  if (interior?.length) {
+  // Bluebeam also writes IC on open PolyLine annotations. It does not fill
+  // those paths (their appearance uses S), so retain it only as source metadata.
+  if (interior?.length && subtype !== "/PolyLine") {
     if (!["rect", "circle"].includes(type) && subtype !== "/Polygon")
       return null;
     fillColor = annotationColor(interior);
@@ -217,17 +219,19 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
     const [a, b] = points,
       rx = Math.abs(b.x - a.x) / 2,
       ry = Math.abs(b.y - a.y) / 2;
-    if (!rx || Math.abs(rx - ry) > Math.max(0.0001, rx * 0.000001)) return null;
+    if (!rx || !ry) return null;
+    if (Math.abs(rx - ry) > Math.max(0.0001, rx * 0.000001)) type = "ellipse";
     const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const old = metadata?.points;
     const angle =
       old?.length === 2
         ? Math.atan2(old[1].y - old[0].y, old[1].x - old[0].x)
         : 0;
-    points.splice(0, 2, center, {
-      x: center.x + rx * Math.cos(angle),
-      y: center.y + rx * Math.sin(angle),
-    });
+    if (type === "circle")
+      points.splice(0, 2, center, {
+        x: center.x + rx * Math.cos(angle),
+        y: center.y + rx * Math.sin(angle),
+      });
   }
   const entity = {
     ...(metadata || {}),
@@ -304,7 +308,9 @@ export function importAnnotations(current, source, metadata = []) {
 }
 
 export const isStandardEntity = (entity) =>
-  ["line", "polyline", "rect", "circle", "freehand"].includes(entity.type);
+  ["line", "polyline", "rect", "circle", "ellipse", "freehand"].includes(
+    entity.type,
+  );
 
 export async function writeAnnotations(doc, source, entities, pdf) {
   const originals = doc.catalog.lookupMaybe(archiveKey, PDFDict);
@@ -347,11 +353,19 @@ export async function writeAnnotations(doc, source, entities, pdf) {
       if (entity.type === "circle") {
         const [center, edge] = points,
           radius = Math.hypot(edge[0] - center[0], edge[1] - center[1]);
-        circle = { center, radius };
+        circle = { center, radiusX: radius, radiusY: radius };
         points = [
           [center[0] - radius, center[1] - radius],
           [center[0] + radius, center[1] + radius],
         ];
+      }
+      if (entity.type === "ellipse") {
+        const [a, b] = points;
+        circle = {
+          center: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
+          radiusX: Math.abs(b[0] - a[0]) / 2,
+          radiusY: Math.abs(b[1] - a[1]) / 2,
+        };
       }
       const width = entity.width / unit,
         pad = Math.max(width / 2, 0.5);
@@ -371,6 +385,7 @@ export async function writeAnnotations(doc, source, entities, pdf) {
         polyline: entity.closed ? "Polygon" : "PolyLine",
         rect: "Square",
         circle: "Circle",
+        ellipse: "Circle",
         freehand: "Ink",
       }[entity.type];
       const put = (name, data) =>
@@ -388,7 +403,7 @@ export async function writeAnnotations(doc, source, entities, pdf) {
           )
         : null;
       if (fill) put("IC", fill);
-      else annotation.delete(key("IC"));
+      else if (subtype !== "PolyLine") annotation.delete(key("IC"));
       put("CA", entity.opacity ?? 1);
       put("BS", { Type: "Border", S: "S", W: width });
       put("Border", [0, 0, width]);
@@ -405,7 +420,7 @@ export async function writeAnnotations(doc, source, entities, pdf) {
       if (entity.type === "line") put("L", points.flat());
       if (entity.type === "polyline") put("Vertices", points.flat());
       if (entity.type === "freehand") put("InkList", [points.flat()]);
-      if (["rect", "circle"].includes(entity.type))
+      if (["rect", "circle", "ellipse"].includes(entity.type))
         put("RD", [pad, pad, pad, pad]);
       const n = (v) => Number(v.toFixed(6));
       let path = points
@@ -417,19 +432,21 @@ export async function writeAnnotations(doc, source, entities, pdf) {
       if (circle) {
         const x = circle.center[0] - rect[0],
           y = circle.center[1] - rect[1],
-          r = circle.radius,
-          c = r * 0.5522847498307936;
+          rx = circle.radiusX,
+          ry = circle.radiusY,
+          cx = rx * 0.5522847498307936,
+          cy = ry * 0.5522847498307936;
         const command = (values, op) => values.map(n).join(" ") + " " + op;
         path = [
-          command([x + r, y], "m"),
-          command([x + r, y + c, x + c, y + r, x, y + r], "c"),
-          command([x - c, y + r, x - r, y + c, x - r, y], "c"),
-          command([x - r, y - c, x - c, y - r, x, y - r], "c"),
-          command([x + c, y - r, x + r, y - c, x + r, y], "c"),
+          command([x + rx, y], "m"),
+          command([x + rx, y + cy, x + cx, y + ry, x, y + ry], "c"),
+          command([x - cx, y + ry, x - rx, y + cy, x - rx, y], "c"),
+          command([x - rx, y - cy, x - cx, y - ry, x, y - ry], "c"),
+          command([x + cx, y - ry, x + rx, y - cy, x + rx, y], "c"),
         ].join("\n");
       }
       const closed =
-        ["rect", "circle"].includes(entity.type) ||
+        ["rect", "circle", "ellipse"].includes(entity.type) ||
         (entity.type === "polyline" && entity.closed);
       const appearance = `q /Opacity gs ${color.map(n).join(" ")} RG ${fill ? fill.map(n).join(" ") + " rg" : ""} ${n(width)} w ${entity.type === "freehand" ? 1 : 0} J 1 j\n${path}\n${closed ? "h\n" : ""}${fill ? "B" : "S"} Q`;
       const stream = doc.context.flateStream(appearance, {
