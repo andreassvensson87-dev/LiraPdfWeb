@@ -154,6 +154,27 @@
           <option value="ellipse">Ellips</option>
         </select>
       </label>
+      <label id="stampControl" hidden
+        >Textstämpel<select id="stampPreset" aria-label="Stämpeltext">
+          <option>PRELIMINÄR</option>
+          <option>GRANSKAD</option>
+          <option>GODKÄND</option>
+          <option>EJ GODKÄND</option>
+          <option value="custom">Egen text…</option>
+        </select></label
+      >
+      <div id="pdfStampControls" hidden>
+        <button id="loadPdfStamp">Läs in PDF-stämpel</button
+        ><input
+          id="stampPdfInput"
+          type="file"
+          accept="application/pdf,.pdf"
+          hidden
+        />
+        <div id="stampPdfFields"></div>
+        <button id="placePdfStamp" hidden>Placera PDF-stämpel</button
+        ><span id="stampPdfSize"></span>
+      </div>
       <div id="styleControls">
         <label
           >Färg<input

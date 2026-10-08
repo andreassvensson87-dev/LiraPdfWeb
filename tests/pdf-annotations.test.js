@@ -877,7 +877,11 @@ test("Bluebeam arc, arrow, cloud, callout, dimension, multiply ink and stamp ret
   );
   const imported = await readEditablePdf(await doc.save());
   assert.equal(imported.state.entities.length, 7);
-  assert.ok(imported.state.entities.every((e) => e.type === "pdfMarkup"));
+  assert.equal(
+    imported.state.entities.filter((e) => e.type === "pdfMarkup").length,
+    6,
+  );
+  assert.equal(imported.state.entities[5].type, "highlight");
   const state = structuredClone(imported.state);
   state.entities.forEach(
     (e) => (e.points = e.points.map((p) => ({ x: p.x + 10, y: p.y + 15 }))),
@@ -892,19 +896,23 @@ test("Bluebeam arc, arrow, cloud, callout, dimension, multiply ink and stamp ret
     assert.equal(a.lookup(k("Subtype")).toString(), `/${shapes[i].Subtype}`);
     if (shapes[i].IT)
       assert.equal(a.lookup(k("IT")).toString(), `/${shapes[i].IT}`);
-    assert.deepEqual(
-      a
-        .lookup(k("Rect"))
-        .asArray()
-        .map((n) => n.asNumber()),
-      [20, 5, 110, 105],
-    );
-    assert.equal(
-      new TextDecoder().decode(
-        decodePDFRawStream(a.lookup(k("AP"), PDFDict).lookup(k("N"))).decode(),
-      ),
-      "q 1 0 0 RG 1 w 0 0 m 100 100 l S Q",
-    );
+    if (i !== 5)
+      assert.deepEqual(
+        a
+          .lookup(k("Rect"))
+          .asArray()
+          .map((n) => n.asNumber()),
+        [20, 5, 110, 105],
+      );
+    if (i !== 5)
+      assert.equal(
+        new TextDecoder().decode(
+          decodePDFRawStream(
+            a.lookup(k("AP"), PDFDict).lookup(k("N")),
+          ).decode(),
+        ),
+        "q 1 0 0 RG 1 w 0 0 m 100 100 l S Q",
+      );
   }
   assert.deepEqual(
     annotations[1]
@@ -996,7 +1004,7 @@ test("preserved appearance preview and flattened export retain vector forms, inc
   );
   assert.equal(exported.getPage(0).node.Annots()?.size() || 0, 0);
   const resources = exported.getPage(0).node.Resources();
-  assert.equal(resources.lookup(k("XObject"), PDFDict).keys().length, 2);
+  assert.equal(resources.lookup(k("XObject"), PDFDict).keys().length, 1);
   const gs = resources.lookup(k("ExtGState"), PDFDict);
   assert.ok(
     gs

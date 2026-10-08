@@ -1,3 +1,5 @@
+import { pdfStampFields, preparePdfStamp } from "./pdf-stamp.js";
+import { editCanvasText } from "./canvas-text-editor.js";
 import {
   expandGroups,
   groupObjects,
@@ -135,6 +137,7 @@ import {
   primitives,
   validateProject,
 } from "./core.js";
+import { cloudPoints, stampLayout } from "./markup-tools.js";
 import { markupPreviewPdf, loadMarkupSource } from "./pdf-markup.js";
 import { loadPdf, demoPdf, exportPdf } from "./pdf.js";
 import { readSaved, writeSaved } from "./storage.js";
@@ -145,6 +148,9 @@ const tools = [
   ["block", "", "PDF-block", "BLOCK"],
   ["line", "╱", "Linje", "L"],
   ["freehand", "✎", "Frihand", "FH"],
+  ["highlight", "", "Färgmarkering", "HL"],
+  ["cloud", "", "Moln", "CLOUD"],
+  ["stamp", "", "Stämpel", "STAMP"],
   ["circle", "○", "Cirkel", "C"],
   ["rect", "▭", "Rektangel", "REC"],
   ["arc", "◜", "Båge", "A"],
@@ -192,6 +198,9 @@ const toolCategories = {
   block: "create",
   line: "create",
   freehand: "create",
+  highlight: "create",
+  cloud: "create",
+  stamp: "create",
   circle: "create",
   ellipse: "create",
   rect: "create",
@@ -302,6 +311,8 @@ const counts = {
   line: 2,
   circle: 2,
   ellipse: 2,
+  cloud: 2,
+  stamp: 2,
   rect: 2,
   arc: 3,
   text: 1,
@@ -436,6 +447,34 @@ $("dialog").addEventListener("close", () => {
   pendingDialog = null;
 });
 $("circleShape").onchange = () => setTool($("circleShape").value);
+let inlineTextId = null;
+function canvasText(entity, initial = "") {
+  const primitive = primitives({ ...entity, text: initial }, 1).find(
+    (p) => p.kind === "text",
+  );
+  const point = primitive?.p || entity.points[0];
+  inlineTextId = entity.id || null;
+  paint();
+  return new Promise((resolve) => {
+    pendingDialog = resolve;
+    editCanvasText({
+      overlay: $("overlay"),
+      point,
+      fontSize: primitive?.size || entity.fontSize,
+      color: entity.color,
+      value: initial,
+      singleLine: entity.type === "stamp",
+      onFinish: (value) => {
+        pendingDialog = null;
+        inlineTextId = null;
+        resolve(value);
+        paint();
+      },
+      onSave: (saveAs) => $(saveAs ? "saveAs" : "save").click(),
+    });
+  });
+}
+const initializedMarkupTools = new Set();
 function setTool(t) {
   objectMenu?.close();
   activeGrip = null;
@@ -460,6 +499,13 @@ function setTool(t) {
   if (drag?.kind === "entity") state = drag.before;
   drag = null;
   tool = t;
+  if (["highlight", "stamp"].includes(t) && !initializedMarkupTools.has(t)) {
+    initializedMarkupTools.add(t);
+    $("color").value = t === "highlight" ? "#ffff00" : "#b3261e";
+    $("width").value = t === "highlight" ? 12 : 1.2;
+    $("transparency").value = 0;
+    if (t === "stamp") $("fontSize").value = 18;
+  }
   if (["circle", "ellipse"].includes(t)) $("circleShape").value = t;
   if (toolCategories[t]) showCategory(toolCategories[t]);
   points = [];
@@ -498,6 +544,10 @@ for (const [id, icon, label, shortcut] of tools) {
     select: '<path d="m5 3 14 9-7 1-3 7Z"/>',
     freehand: '<path d="M3 17c3-10 5 7 8-3s4-10 5-5M14 7l5-5 3 3-5 5-4 1Z"/>',
     line: '<path d="M5 19 19 5"/><rect x="3" y="17" width="4" height="4"/><rect x="17" y="3" width="4" height="4"/>',
+    highlight: '<path d="m5 16 10-10 5 5-10 10H5ZM3 22h12"/>',
+    cloud:
+      '<path d="M6 18a4 4 0 0 1-1-8 5 5 0 0 1 9-4 4 4 0 0 1 6 6 3 3 0 0 1-2 6Z"/>',
+    stamp: '<path d="M5 20h14M4 17h16v-4H4ZM9 13V5a3 3 0 0 1 6 0v8"/>',
     circle: '<circle cx="12" cy="12" r="8"/>',
     rect: '<rect x="3" y="5" width="18" height="14" rx="1"/>',
     arc: '<path d="M4 19A15 15 0 0 1 19 4"/><path d="M2 19h4M19 2v4"/>',
@@ -530,6 +580,9 @@ function scaleContext(p) {
 function prompt() {
   const steps = {
     freehand: ["Håll ned och dra för att rita · Esc avslutar"],
+    highlight: ["Håll ned och dra för att färgmarkera · Esc avslutar"],
+    cloud: ["Välj molnets första hörn", "Välj motsatt hörn"],
+    stamp: ["Välj stämpelns första hörn", "Välj motsatt hörn"],
     viewport: ["Välj viewportens första hörn", "Välj motsatt hörn"],
     block: ["Klicka för att placera PDF-block · Esc avslutar"],
     line: [
@@ -544,7 +597,7 @@ function prompt() {
       "Välj en punkt på bågen",
       "Välj bågens slutpunkt",
     ],
-    text: ["Välj textens placering"],
+    text: ["Klicka och skriv · Ctrl+Enter: klar · Esc: avbryt"],
     leader: ["Välj pilspets", "Välj brytpunkt", "Välj textplacering"],
     dim: [
       "Välj första mätpunkten",
@@ -675,6 +728,7 @@ async function prepareMarkupPreviews() {
   }
 }
 function drawEntity(e, preview = false, parent = $("overlay")) {
+  if (e.id && e.id === inlineTextId) return;
   const g = svg(
     "g",
     {
@@ -740,7 +794,89 @@ function drawEntity(e, preview = false, parent = $("overlay")) {
       );
     return;
   }
-  if (e.type === "freehand") {
+  if (["cloud", "stamp"].includes(e.type)) {
+    const r = box(...e.points),
+      color = isSelected ? "#2879c4" : e.color;
+    if (e.type === "cloud") {
+      const pts = cloudPoints(e.points)
+        .map((p) => `${p.x},${p.y}`)
+        .join(" ");
+      svg(
+        "polyline",
+        {
+          points: pts,
+          fill: "none",
+          stroke: color,
+          "stroke-width": e.width,
+          "stroke-linejoin": "round",
+        },
+        g,
+      );
+      if (!preview)
+        svg(
+          "polyline",
+          {
+            points: pts,
+            fill: "none",
+            stroke: "transparent",
+            "stroke-width": Math.max(e.width, 10 / zoom),
+            "pointer-events": "stroke",
+          },
+          g,
+        );
+    } else {
+      svg(
+        "rect",
+        {
+          x: r.x,
+          y: r.y,
+          width: r.w,
+          height: r.h,
+          fill: "transparent",
+          stroke: color,
+          "stroke-width": e.width,
+          "pointer-events": "all",
+        },
+        g,
+      );
+      const label = svg(
+        "text",
+        {
+          x: r.x + r.w / 2,
+          y: r.y + r.h / 2 + stampLayout(e).size * 0.35,
+          fill: color,
+          "font-family": "Helvetica, Arial, sans-serif",
+          "font-weight": "bold",
+          "font-size": stampLayout(e).size,
+          "text-anchor": "middle",
+          "pointer-events": "none",
+        },
+        g,
+      );
+      label.textContent = e.text || "PRELIMINÄR";
+    }
+    if (isSelected)
+      e.points.forEach((p, i) =>
+        svg(
+          "rect",
+          {
+            x: p.x - 3.5 / zoom,
+            y: p.y - 3.5 / zoom,
+            width: 7 / zoom,
+            height: 7 / zoom,
+            fill: "#fff",
+            stroke: "#147b60",
+            "stroke-width": 1 / zoom,
+            "data-grip": i,
+            "data-id": e.id,
+          },
+          g,
+        ),
+      );
+    return;
+  }
+  if (["freehand", "highlight"].includes(e.type)) {
+    if (e.type === "highlight") g.style.mixBlendMode = "multiply";
     const attrs = {
       points: e.points.map((p) => `${p.x},${p.y}`).join(" "),
       fill: "none",
@@ -1007,7 +1143,14 @@ function paint() {
             page: pageNo,
             viewportId: scaleContext(ps[0]).owner?.id,
             points: ps,
-            text: tool === "leader" ? "Kommentar" : "",
+            text:
+              tool === "leader"
+                ? "Kommentar"
+                : tool === "stamp"
+                  ? $("stampPreset").value === "custom"
+                    ? "Egen text"
+                    : $("stampPreset").value
+                  : "",
             ...style(),
             ...(tool === "mask" ? { color: "#ffffff" } : {}),
           },
@@ -1092,6 +1235,8 @@ function refresh() {
         ? current().label
         : names[current()?.type || tool];
   const activeType = current()?.type || tool;
+  $("pdfStampControls").hidden = tool !== "stamp" || !!current();
+  $("stampControl").hidden = tool !== "stamp" || !!current();
   $("circleShapeControl").hidden =
     !!current() || !["circle", "ellipse"].includes(tool);
   const hasStyle =
@@ -1159,7 +1304,7 @@ function refresh() {
     activeType,
   );
   $("editText").hidden =
-    !current() || !["text", "leader", "replace"].includes(activeType);
+    !current() || !["text", "leader", "replace", "stamp"].includes(activeType);
   $("delete").hidden = !selection.size;
   $("replace").classList.toggle("active", tool === "replace");
   prompt();
@@ -1176,7 +1321,8 @@ function refresh() {
   $("redo").disabled = !redoStack.length;
   $("delete").disabled = !selection.size;
   $("editText").disabled =
-    !current() || !["text", "leader", "replace"].includes(current().type);
+    !current() ||
+    !["text", "leader", "replace", "stamp"].includes(current().type);
   for (const [id, on, label] of [
     ["polar", polar, "POLAR · F10"],
     ["otrack", otrack, "OTRACK · F11"],
@@ -1703,7 +1849,7 @@ function pdfLineAt(point) {
   return covered ? null : nearestSegment(point, pdfSegments, 8 / zoom);
 }
 function localPoint(ev, constrained = true) {
-  if (tool === "freehand") constrained = false;
+  if (["freehand", "highlight"].includes(tool)) constrained = false;
   const r = $("viewport").getBoundingClientRect();
   let p = {
     x: (ev.clientX - r.left - pan.x) / zoom,
@@ -1849,7 +1995,7 @@ function localPoint(ev, constrained = true) {
   return p;
 }
 async function addPoint(p) {
-  if (tool === "freehand") {
+  if (["freehand", "highlight"].includes(tool)) {
     toast("Håll ned och dra i ritningen för att rita på fri hand.");
     return;
   }
@@ -1935,6 +2081,23 @@ async function addPoint(p) {
       (Math.abs(ps[1].x - ps[0].x) < 0.1 || Math.abs(ps[1].y - ps[0].y) < 0.1)
     )
       throw Error("Ellipsen behöver både bredd och höjd.");
+    if (
+      ["cloud", "stamp"].includes(type) &&
+      (box(...ps).w < 10 || box(...ps).h < 10)
+    )
+      throw Error("Välj ett område som är minst 10 × 10 punkter.");
+    if (type === "stamp") {
+      text = $("stampPreset").value;
+      if (text === "custom")
+        text = await canvasText(
+          { type: "stamp", points: ps, ...style() },
+          "PRELIMINÄR",
+        );
+      if (text === null || !text.trim()) return;
+      text = text.trim();
+      if (text.length > 100 || /[\r\n]/.test(text))
+        throw Error("Använd en rad med högst 100 tecken.");
+    }
     if (type === "dim") dimension(...ps);
     if (
       ["line", "circle", "rect", "replace", "mask"].includes(type) &&
@@ -1991,11 +2154,8 @@ async function addPoint(p) {
           };
         }
       }
-      text = await ask(
-        type === "replace" ? "Täck och ersätt PDF-text" : "Text",
-        type === "replace"
-          ? "En vit yta täcker området. Originaltexten finns kvar i PDF:en. Kontrollera att ritningslinjer inte täcks."
-          : "Skriv texten. Radbrytningar bevaras.",
+      text = await canvasText(
+        { type, points: ps, ...style(), ...(replacementStyle || {}) },
         initial,
       );
       if (text === null || !text.trim()) return;
@@ -2019,6 +2179,10 @@ async function addPoint(p) {
     next.entities.push(e);
     commit(next);
     if (type === "line") points = [ps[1]];
+    if (["text", "stamp"].includes(type)) {
+      setTool("select");
+      select(e.id);
+    }
   } catch (e) {
     if (type === "line") points = [ps[0]];
     error(e);
@@ -2055,14 +2219,14 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
     return;
   }
   const p = localPoint(ev);
-  if (tool === "freehand") {
+  if (["freehand", "highlight"].includes(tool)) {
     ev.preventDefault();
     drag = {
       kind: "freehand",
       pointerId: ev.pointerId,
       entity: {
         id: crypto.randomUUID(),
-        type: "freehand",
+        type: tool,
         page: pageNo,
         points: [p],
         ...style(),
@@ -2087,7 +2251,9 @@ $("viewport").addEventListener("pointerdown", async (ev) => {
       ...clone(pendingBlock),
       id: crypto.randomUUID(),
       page: pageNo,
-      viewportId: scaleContext(p).owner?.id,
+      ...(pendingBlock.isPdfStamp
+        ? {}
+        : { viewportId: scaleContext(p).owner?.id }),
       points: [p],
     };
     const next = clone(state);
@@ -2370,7 +2536,10 @@ $("viewport").addEventListener("pointermove", (ev) => {
       paint();
       return;
     }
-    if (drag.grip !== null && ["line", "circle", "arc"].includes(e.type)) {
+    if (
+      drag.grip !== null &&
+      ["line", "circle", "arc", "pdfMarkup"].includes(e.type)
+    ) {
       try {
         const q = original.points[drag.grip];
         Object.assign(
@@ -2604,19 +2773,20 @@ $("viewport").addEventListener(
 );
 async function editText() {
   const e = current();
-  if (!e || !["text", "leader", "replace"].includes(e.type)) return;
-  const value = await ask(
-    "Redigera text",
-    "Ändra texten för det valda objektet.",
-    e.text,
-  );
+  if (!e || !["text", "leader", "replace", "stamp"].includes(e.type)) return;
+  const value = await canvasText(e, e.text);
   if (value !== null && value.trim()) {
+    if (e.type === "stamp" && (value.length > 100 || /[\r\n]/.test(value))) {
+      toast("Använd en rad med högst 100 tecken.");
+      return;
+    }
     const next = clone(state);
     next.entities.find((n) => n.id === e.id).text = value;
     commit(next);
   }
 }
-$("overlay").addEventListener("dblclick", () => {
+$("viewport").addEventListener("dblclick", (event) => {
+  if (event.target.closest(".page-navigation")) return;
   if (tool === "select") editText();
 });
 function remove() {
@@ -2685,6 +2855,94 @@ $("saveLibraryBlock").onclick = async () => {
     toast("Blocket är sparat i biblioteket och kan användas i andra dokument.");
   } catch (e) {
     error(e);
+  }
+};
+let pdfStampTemplate = null;
+$("loadPdfStamp").onclick = () => $("stampPdfInput").click();
+$("stampPdfInput").onchange = async (event) => {
+  const file = event.target.files[0];
+  event.target.value = "";
+  if (!file || busy || pendingDialog) return;
+  try {
+    busy = true;
+    const data = new Uint8Array(await file.arrayBuffer()),
+      fields = await pdfStampFields(data);
+    pdfStampTemplate = {
+      data,
+      name: file.name.replace(/\.pdf$/i, ""),
+      attributes: Object.fromEntries(fields.map((f) => [f.name, f.value])),
+    };
+    $("stampPdfFields").replaceChildren();
+    for (const field of fields) {
+      const label = document.createElement("label");
+      label.textContent = field.name;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = field.value;
+      input.setAttribute("aria-label", field.name);
+      input.oninput = () =>
+        (pdfStampTemplate.attributes[field.name] = input.value);
+      label.append(input);
+      $("stampPdfFields").append(label);
+    }
+    $("placePdfStamp").hidden = false;
+    $("stampPdfSize").textContent = file.name + " · första sidan";
+    toast(
+      fields.length
+        ? "Fyll i stämpelns fält och välj Placera PDF-stämpel."
+        : "Välj Placera PDF-stämpel och klicka i ritningen.",
+    );
+  } catch (e) {
+    error(e);
+  } finally {
+    busy = false;
+  }
+};
+$("placePdfStamp").onclick = async () => {
+  if (!pdfStampTemplate || busy || pendingDialog) return;
+  let instance;
+  try {
+    busy = true;
+    const stamp = await preparePdfStamp(
+      pdfStampTemplate.data,
+      pdfStampTemplate.attributes,
+    );
+    instance = await loadPdf(stamp.bytes);
+    const page = await instance.getPage(1),
+      viewport = page.getViewport({
+        scale: Math.min(3, 1600 / Math.max(stamp.width, stamp.height)),
+      }),
+      canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    await page.render({
+      canvasContext: canvas.getContext("2d"),
+      viewport,
+      background: "rgba(0,0,0,0)",
+    }).promise;
+    pendingBlock = {
+      type: "block",
+      isPdfStamp: true,
+      blockPdf: base64(stamp.bytes),
+      preview: canvas.toDataURL("image/png"),
+      blockName: pdfStampTemplate.name,
+      naturalWidth: stamp.width,
+      naturalHeight: stamp.height,
+      blockWidth: stamp.width,
+      blockHeight: stamp.height,
+      rotation: 0,
+      ...style(),
+    };
+    busy = false;
+    setTool("block");
+    toast(
+      `Klicka för att placera PDF-stämpeln · ${((stamp.width * 25.4) / 72).toFixed(1)} × ${((stamp.height * 25.4) / 72).toFixed(1)} mm`,
+    );
+  } catch (e) {
+    error(e);
+  } finally {
+    busy = false;
+    await instance?.destroy();
   }
 };
 $("blockInput").onchange = async (ev) => {
@@ -3252,6 +3510,12 @@ function editCommand(value, number) {
 }
 const aliases = {
   FH: "freehand",
+  HL: "highlight",
+  HIGHLIGHT: "highlight",
+  CLOUD: "cloud",
+  MOLN: "cloud",
+  STAMP: "stamp",
+  STÄMPEL: "stamp",
   FREEHAND: "freehand",
   RO: "rotate",
   ROTATE: "rotate",
@@ -3616,6 +3880,9 @@ quickToolBar = setupQuickTools({
   tools: [...tools, ["ellipse", "", "Ellips", "EL"]].filter(([id]) =>
     [
       "freehand",
+      "highlight",
+      "cloud",
+      "stamp",
       "line",
       "rect",
       "circle",

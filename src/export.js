@@ -14,6 +14,7 @@ import {
   markupRect,
   drawMarkupAppearance,
 } from "./pdf-markup.js";
+import { createToolAnnotation } from "./pdf-created-markups.js";
 import { primitives } from "./core.js";
 const parseColor = (c) =>
   rgb(
@@ -42,10 +43,52 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
     for (const e of entities.filter((e) => e.page === i + 1)) {
       if (e.type === "pdfErase" || (e.type === "viewport" && !e.showLabel))
         continue;
+      if (["cloud", "stamp"].includes(e.type)) {
+        const annotation = await createToolAnnotation(
+          doc,
+          page,
+          e,
+          vp,
+          source.userUnit || 1,
+        );
+        drawMarkupAppearance(
+          doc,
+          page,
+          doc,
+          annotation,
+          annotation
+            .lookup(PDFName.of("Rect"))
+            .asArray()
+            .map((n) => n.asNumber()),
+        );
+        continue;
+      }
       if (e.type === "pdfMarkup") {
         const original = originalMarkup(doc, e);
         if (!original) throw Error("PDF-markeringens original saknas.");
         drawMarkupAppearance(doc, page, doc, original, markupRect(e, vp));
+        continue;
+      }
+      if (e.type === "highlight") {
+        const pts = e.points.map(pt),
+          bounds = {
+            x: Math.min(...pts.map((p) => p.x)),
+            y: Math.min(...pts.map((p) => p.y)),
+          };
+        const path = pts
+          .map(
+            (p, i) => `${i ? "L" : "M"} ${p.x - bounds.x} ${-(p.y - bounds.y)}`,
+          )
+          .join(" ");
+        page.drawSvgPath(path, {
+          x: bounds.x,
+          y: bounds.y,
+          borderColor: parseColor(e.color),
+          borderWidth: e.width / (source.userUnit || 1),
+          borderLineCap: LineCapStyle.Round,
+          opacity: e.opacity ?? 1,
+          blendMode: "Multiply",
+        });
         continue;
       }
       const opacity = e.opacity ?? 1;

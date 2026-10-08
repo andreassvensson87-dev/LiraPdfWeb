@@ -25,6 +25,18 @@ En vanlig webbläsarflik registreras inte som standardprogram. En befintlig inst
 
 ## Frihand och egna snabbverktyg
 
+Välj **Rita → Text** och klicka i ritningen för att skriva direkt på canvasen. Enter gör en ny rad, Ctrl/⌘+Enter avslutar, Esc avbryter och klick utanför avslutar. Markera en tillagd text, leader, täcknings-/ersättningstext eller textstämpel och välj **Ändra text** för att redigera på samma plats. Ctrl/⌘+S avslutar pågående textredigering och sparar PDF:en med ändringen. Ett avslutat textpass ger ett ångrasteg; avbruten text ändrar inte dokumentet. Tryckt text i PDF-underlaget ändras genom den befintliga täcknings-/ersättningsfunktionen.
+
+Under **Rita → Stämpel → Läs in PDF-stämpel** kan en egen PDF-mall läsas in. Eventuella vanliga textfält visas i Egenskaper och fylls i innan du väljer **Placera PDF-stämpel** och klickar i ritningen. Första sidan används, med mallens ursprungliga storlek och proportioner; placeringen kräver ett klick. Fälten bakas in i stämpelns vektorgrafik vid placering, och PDF:en får en vanlig Stamp-annotering. Mallen ändras inte. Storlek och rotation kan ändras i samma egenskaper som PDF-block. PDF-mallens egna markeringar följer också med. Bluebeams skript för automatiska datum, användare och interaktiva val körs inte; den här versionen stöder statiska mallar och manuell ifyllnad av textfält.
+
+Välj **Rita → Moln** (`CLOUD` eller `MOLN`) och välj två motsatta hörn för att markera ett område med molnkant. Hörngreppen ändrar området. Molnet sparas som en Polygon-annotering med molneffekt (`BE /C`, `PolygonCloud`).
+
+Välj **Rita → Färgmarkering** (`HL`) och håll ned och dra. Standardfärgen är gul och bredden 12 pt. Färgen blandas med underlaget (Multiply), så att ritningen syns genom strecket. Välj färg, bredd och genomskinlighet i Egenskaper. Strecket sparas som Ink med Multiply och kan också skapas från ett importerat Bluebeam-pennstreck av samma typ.
+
+Välj **Rita → Stämpel** (`STAMP`) och välj PRELIMINÄR, GRANSKAD, GODKÄND, EJ GODKÄND eller Egen text i Egenskaper. Välj sedan två motsatta hörn. Markera en Lira-skapad textstämpel och välj **Ändra text** för att skriva direkt i ritningen; använd en rad med högst 100 tecken. Texten centreras och minskas vid behov för att passa ramen. Stämpeln sparas som en Stamp-annotering med vektorgrafik och inbäddat typsnitt. Moln, färgmarkeringar och stämplar kan läggas i egna snabbverktyg.
+
+Spara med **Ctrl+S / Spara PDF** för redigerbara PDF-objekt. Lira-skapade moln och stämplar behåller sina verktyg när filen återöppnas. Om ett annat program ändrar deras utseende använder Lira det aktuella originalutseendet, i stället för att skriva över ändringen med gammal verktygsdata. Stämpeltext stöder svenska och andra tecken i Helvetica/WinAnsi.
+
 Välj **Rita → Cirkel** och välj **Ellips** i fältet **Form** för att rita en ellips mellan två motsatta hörn. `EL` aktiverar ellips direkt. Cirklar ritas som tidigare med centrum och radie. Båda sparas som standardannoteringen Circle i PDF:en.
 
 Välj **Rita → Frihand** eller skriv `FH`. Håll ned musknappen eller pennan och dra för att markera granskade delar av PDF:en. Frihand följer pekaren utan snappning, POLAR eller ORTHO. Pennbredden anges i px vid 100 % zoom och följer dokumentet vid zoomning. Varje drag är ett objekt som kan markeras, flyttas, raderas och ångras. Strecken autosparas, ingår i sparade PDF-filer och exporteras som vektorer med runda ändar.

@@ -3,6 +3,9 @@ import { polylineOffset } from "./polyline-offset.js";
 import { box, distance } from "./core.js";
 export const editableTypes = [
   "freehand",
+  "highlight",
+  "cloud",
+  "stamp",
   "polyline",
   "line",
   "circle",

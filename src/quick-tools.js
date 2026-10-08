@@ -1,5 +1,9 @@
 const icons = {
   freehand: '<path d="M3 17c3-10 5 7 8-3s4-10 5-5M14 7l5-5 3 3-5 5-4 1Z"/>',
+  highlight: '<path d="m5 16 10-10 5 5-10 10H5ZM3 22h12"/>',
+  cloud:
+    '<path d="M6 18a4 4 0 0 1-1-8 5 5 0 0 1 9-4 4 4 0 0 1 6 6 3 3 0 0 1-2 6Z"/>',
+  stamp: '<path d="M5 20h14M4 17h16v-4H4ZM9 13V5a3 3 0 0 1 6 0v8"/>',
   line: '<path d="M5 19 19 5"/>',
   rect: '<rect x="3" y="5" width="18" height="14" rx="1"/>',
   ellipse: '<ellipse cx="12" cy="12" rx="9" ry="6"/>',

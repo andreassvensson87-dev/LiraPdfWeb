@@ -1,3 +1,4 @@
+import { cloudPoints, stampLayout } from "./markup-tools.js";
 export const distance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
 export const box = (a, b) => ({
   x: Math.min(a.x, b.x),
@@ -64,12 +65,30 @@ export function primitives(e, scale) {
     line(p, { x: p.x + r * Math.cos(t - 0.4), y: p.y + r * Math.sin(t - 0.4) });
   };
   switch (e.type) {
+    case "highlight":
     case "freehand":
     case "polyline":
       if (e.closed) fill(e.points);
       e.points.slice(1).forEach((p, i) => line(e.points[i], p));
       if (e.closed) line(e.points.at(-1), e.points[0]);
       break;
+    case "cloud": {
+      const ps = cloudPoints(e.points);
+      ps.slice(1).forEach((p, i) => line(ps[i], p));
+      break;
+    }
+    case "stamp": {
+      const { rect: r, text: value, size, point } = stampLayout(e),
+        ps = [
+          { x: r.x, y: r.y },
+          { x: r.x + r.w, y: r.y },
+          { x: r.x + r.w, y: r.y + r.h },
+          { x: r.x, y: r.y + r.h },
+        ];
+      ps.forEach((p, i) => line(p, ps[(i + 1) % 4]));
+      out.push({ kind: "text", p: point, value, size, bold: true });
+      break;
+    }
     case "line":
       line(a, b);
       break;
@@ -173,6 +192,9 @@ export function validateProject(p) {
   const counts = {
     polyline: -1,
     freehand: -1,
+    highlight: -1,
+    cloud: 2,
+    stamp: 2,
     viewport: 2,
     pdfMarkup: 2,
     pdfErase: 2,
@@ -198,7 +220,7 @@ export function validateProject(p) {
       typeof e.id !== "string" ||
       ids.has(e.id) ||
       !Array.isArray(e.points) ||
-      (["polyline", "freehand"].includes(e.type)
+      (["polyline", "freehand", "highlight"].includes(e.type)
         ? e.points.length < (e.closed ? 3 : 2) ||
           e.points.length > 10000 ||
           (e.type === "polyline" && typeof e.closed !== "boolean")
@@ -234,6 +256,27 @@ export function validateProject(p) {
         box(...e.points).h <= 0)
     )
       throw Error("Ogiltig originalmarkering.");
+    if (
+      e.type === "stamp" &&
+      (typeof e.text !== "string" ||
+        !e.text.trim() ||
+        e.text.length > 100 ||
+        /[\r\n]/.test(e.text))
+    )
+      throw Error(
+        "Stämpeln behöver en text på högst 100 tecken utan radbrytning.",
+      );
+    if (
+      ["cloud", "stamp"].includes(e.type) &&
+      (box(...e.points).w < 1 || box(...e.points).h < 1)
+    )
+      throw Error("Markeringen behöver bredd och höjd.");
+    if (
+      e.type === "block" &&
+      e.isPdfStamp !== undefined &&
+      typeof e.isPdfStamp !== "boolean"
+    )
+      throw Error("Ogiltig PDF-stämpel.");
     if (e.groupId !== undefined) {
       if (
         typeof e.groupId !== "string" ||
@@ -287,6 +330,7 @@ export function validateProject(p) {
         ![
           "polyline",
           "freehand",
+          "highlight",
           "line",
           "circle",
           "rect",

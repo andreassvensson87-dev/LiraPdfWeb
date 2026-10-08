@@ -1,3 +1,5 @@
+import { createPdfStampAnnotation } from "./pdf-stamp.js";
+import { blockCorners } from "./pdf-block.js";
 import {
   PDFArray,
   PDFDict,
@@ -10,6 +12,10 @@ import {
 } from "pdf-lib";
 
 import { markupRect, transformMarkup } from "./pdf-markup.js";
+import {
+  createToolAnnotation,
+  isUnchangedCreatedMarkup,
+} from "./pdf-created-markups.js";
 import { arcPoints } from "./core.js";
 
 // Annotation references may lead back through Popup/Parent to their page.
@@ -125,11 +131,17 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
   }[subtype];
   if (!type) return null;
   if (
+    type === "freehand" &&
+    value(annotation, "BM")?.toString() === "/Multiply"
+  )
+    type = "highlight";
+  if (
     value(annotation, "IT")?.toString() === "/CircleArc" ||
     annotation.has(key("Angle1")) ||
     annotation.has(key("Angle2")) ||
     (value(annotation, "BM") &&
-      value(annotation, "BM").toString() !== "/Normal")
+      value(annotation, "BM").toString() !== "/Normal" &&
+      type !== "highlight")
   )
     return null;
   const flags = number(annotation, "F", 0);
@@ -181,7 +193,7 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
         rect[3] - inset[3],
       ];
   }
-  if (type === "freehand") {
+  if (["freehand", "highlight"].includes(type)) {
     const paths = value(annotation, "InkList");
     // Multi-stroke ink is preserved as an annotation until the editor supports multiple paths.
     if (!(paths instanceof PDFArray) || paths.size() !== 1) return null;
@@ -361,6 +373,90 @@ function parsePreservedMarkup(annotation, page, pageNo, metadata, id) {
         : "normal",
   };
   delete entity.fillColor;
+  if (
+    metadata?.type === "block" &&
+    metadata.isPdfStamp &&
+    isUnchangedCreatedMarkup(annotation, metadata)
+  ) {
+    const corners = blockCorners(metadata),
+      xs = corners.map((p) => p.x),
+      ys = corners.map((p) => p.y),
+      currentXs = entity.points.map((p) => p.x),
+      currentYs = entity.points.map((p) => p.y);
+    const width = Math.max(...currentXs) - Math.min(...currentXs),
+      height = Math.max(...currentYs) - Math.min(...currentYs);
+    if (
+      Math.abs(width - (Math.max(...xs) - Math.min(...xs))) < 0.001 &&
+      Math.abs(height - (Math.max(...ys) - Math.min(...ys))) < 0.001
+    )
+      return {
+        ...metadata,
+        id,
+        page: pageNo,
+        pdfAnnotationId: id,
+        points: [
+          {
+            x: metadata.points[0].x + Math.min(...currentXs) - Math.min(...xs),
+            y: metadata.points[0].y + Math.min(...currentYs) - Math.min(...ys),
+          },
+        ],
+      };
+  }
+  if (
+    isUnchangedCreatedMarkup(annotation, metadata) &&
+    entity.color === metadata.color &&
+    Math.abs(entity.width - metadata.width) < 1e-6 &&
+    Math.abs(number(annotation, "CA", 1) - (metadata.opacity ?? 1)) < 1e-6
+  ) {
+    if (metadata.type === "cloud") {
+      const vertices = numbers(value(annotation, "Vertices"));
+      if (
+        vertices?.length === 8 &&
+        number(value(annotation, "BE"), "I", 0) === 2
+      ) {
+        const pts = [];
+        for (let i = 0; i < 8; i += 2)
+          pts.push(mapping.fromPdf(vertices[i], vertices[i + 1]));
+        const xs = pts.map((p) => p.x),
+          ys = pts.map((p) => p.y),
+          minX = Math.min(...xs),
+          maxX = Math.max(...xs),
+          minY = Math.min(...ys),
+          maxY = Math.max(...ys);
+        if (
+          new Set(pts.map((p) => `${p.x},${p.y}`)).size !== 4 ||
+          pts.some(
+            (p) => !([minX, maxX].includes(p.x) && [minY, maxY].includes(p.y)),
+          )
+        )
+          return entity;
+        entity.points = [
+          {
+            x: Math.min(...pts.map((p) => p.x)),
+            y: Math.min(...pts.map((p) => p.y)),
+          },
+          {
+            x: Math.max(...pts.map((p) => p.x)),
+            y: Math.max(...pts.map((p) => p.y)),
+          },
+        ];
+        entity.type = "cloud";
+        entity.opacity = number(annotation, "CA", 1);
+      }
+    } else if (text(value(annotation, "Contents")) === metadata.text) {
+      const inset = numbers(value(annotation, "LiraStampInset")) || [
+        0, 0, 0, 0,
+      ];
+      entity.points = [
+        mapping.fromPdf(rect[0] + inset[0], rect[1] + inset[1]),
+        mapping.fromPdf(rect[2] - inset[2], rect[3] - inset[3]),
+      ];
+      entity.type = "stamp";
+      entity.text = metadata.text;
+      entity.fontSize = metadata.fontSize;
+      entity.opacity = number(annotation, "CA", 1);
+    }
+  }
   return entity;
 }
 
@@ -450,6 +546,7 @@ export function importAnnotations(current, source, metadata = []) {
 }
 
 export const isStandardEntity = (entity) =>
+  (entity.type === "block" && entity.isPdfStamp === true) ||
   [
     "line",
     "polyline",
@@ -458,6 +555,9 @@ export const isStandardEntity = (entity) =>
     "ellipse",
     "arc",
     "freehand",
+    "highlight",
+    "cloud",
+    "stamp",
     "pdfMarkup",
   ].includes(entity.type);
 
@@ -470,6 +570,37 @@ export async function writeAnnotations(doc, source, entities, pdf) {
     for (const entity of entities.filter(
       (e) => e.page === i + 1 && isStandardEntity(e),
     )) {
+      if (
+        ["cloud", "stamp"].includes(entity.type) ||
+        (entity.type === "block" && entity.isPdfStamp)
+      ) {
+        const annotation =
+          entity.type === "block"
+            ? await createPdfStampAnnotation(doc, page, entity, vp)
+            : await createToolAnnotation(doc, page, entity, vp, unit);
+        const originalRef = originals?.get(
+          key(entity.pdfAnnotationId || entity.id),
+        );
+        const original = originalRef
+          ? doc.context.lookup(originalRef, PDFDict)
+          : null;
+        if (original)
+          for (const [name, value] of original.entries())
+            if (!annotation.has(name) || name.toString() === "/T")
+              annotation.set(name, value);
+        if (entity.id !== (entity.pdfAnnotationId || entity.id))
+          annotation.delete(key("Popup"));
+        const ref = doc.context.register(annotation);
+        page.node.addAnnot(ref);
+        const popupRef = annotation.get(key("Popup"));
+        if (popupRef) {
+          const popup = doc.context.lookup(popupRef, PDFDict);
+          popup.set(key("Parent"), ref);
+          popup.set(key("P"), page.ref);
+          page.node.addAnnot(popupRef);
+        }
+        continue;
+      }
       const originalRef = originals?.get(
         key(entity.pdfAnnotationId || entity.id),
       );
@@ -558,6 +689,7 @@ export async function writeAnnotations(doc, source, entities, pdf) {
         circle: "Circle",
         ellipse: "Circle",
         freehand: "Ink",
+        highlight: "Ink",
         arc: "PolyLine",
       }[entity.type];
       const put = (name, data) =>
@@ -578,6 +710,7 @@ export async function writeAnnotations(doc, source, entities, pdf) {
               ellipse: "Ellips",
               arc: "Polylinje",
               freehand: "Penna",
+              highlight: "Färgmarkering",
             }[entity.type],
           ),
         );
@@ -593,6 +726,8 @@ export async function writeAnnotations(doc, source, entities, pdf) {
         : null;
       if (fill) put("IC", fill);
       else if (subtype !== "PolyLine") annotation.delete(key("IC"));
+      if (entity.type === "highlight") put("BM", "Multiply");
+      else annotation.delete(key("BM"));
       put("CA", entity.opacity ?? 1);
       put("BS", { Type: "Border", S: "S", W: width });
       put("Border", [0, 0, width]);
@@ -609,7 +744,8 @@ export async function writeAnnotations(doc, source, entities, pdf) {
       if (entity.type === "line") put("L", points.flat());
       if (["polyline", "arc"].includes(entity.type))
         put("Vertices", points.flat());
-      if (entity.type === "freehand") put("InkList", [points.flat()]);
+      if (["freehand", "highlight"].includes(entity.type))
+        put("InkList", [points.flat()]);
       if (["rect", "circle", "ellipse"].includes(entity.type))
         put("RD", [pad, pad, pad, pad]);
       const n = (v) => Number(v.toFixed(6));
@@ -638,7 +774,7 @@ export async function writeAnnotations(doc, source, entities, pdf) {
       const closed =
         ["rect", "circle", "ellipse"].includes(entity.type) ||
         (entity.type === "polyline" && entity.closed);
-      const appearance = `q /Opacity gs ${color.map(n).join(" ")} RG ${fill ? fill.map(n).join(" ") + " rg" : ""} ${n(width)} w ${entity.type === "freehand" ? 1 : 0} J 1 j\n${path}\n${closed ? "h\n" : ""}${fill ? "B" : "S"} Q`;
+      const appearance = `q /Opacity gs ${color.map(n).join(" ")} RG ${fill ? fill.map(n).join(" ") + " rg" : ""} ${n(width)} w ${["freehand", "highlight"].includes(entity.type) ? 1 : 0} J 1 j\n${path}\n${closed ? "h\n" : ""}${fill ? "B" : "S"} Q`;
       const stream = doc.context.flateStream(appearance, {
         Type: "XObject",
         Subtype: "Form",
@@ -648,6 +784,7 @@ export async function writeAnnotations(doc, source, entities, pdf) {
           ExtGState: {
             Opacity: {
               Type: "ExtGState",
+              ...(entity.type === "highlight" ? { BM: "Multiply" } : {}),
               CA: entity.opacity ?? 1,
               ca: entity.opacity ?? 1,
             },
