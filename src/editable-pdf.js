@@ -8,47 +8,106 @@ import {
 } from "pdf-lib";
 import { exportPdf } from "./export.js";
 import { validateProject } from "./core.js";
+import {
+  importAnnotations,
+  isStandardEntity,
+  writeAnnotations,
+  pruneUnusedObjects,
+} from "./pdf-annotations.js";
 
 const key = PDFName.of("LiraPDF");
 
 export async function readEditablePdf(bytes) {
   const doc = await PDFDocument.load(bytes);
-  if (!doc.catalog.has(key)) return null;
-  const data = doc.catalog.lookup(key, PDFDict);
-  if (data.lookup(PDFName.of("Version"), PDFNumber).asNumber() !== 1)
-    throw Error(
-      "PDF:en innehåller redigeringsdata från en version av LiraPDF som inte stöds.",
-    );
-  const stream = (name) =>
-    decodePDFRawStream(data.lookup(PDFName.of(name), PDFRawStream)).decode();
-  const source = stream("Source");
-  const state = JSON.parse(new TextDecoder().decode(stream("State")));
+  let source = doc,
+    sourceBytes = bytes,
+    state = { entities: [], scales: {}, rotations: {} },
+    version = 0;
+  if (doc.catalog.has(key)) {
+    const data = doc.catalog.lookup(key, PDFDict);
+    version = data.lookup(PDFName.of("Version"), PDFNumber).asNumber();
+    if (![1, 2].includes(version))
+      throw Error(
+        "PDF:en innehåller redigeringsdata från en version av LiraPDF som inte stöds.",
+      );
+    const stream = (name) =>
+      decodePDFRawStream(data.lookup(PDFName.of(name), PDFRawStream)).decode();
+    sourceBytes = stream("Source");
+    state = JSON.parse(new TextDecoder().decode(stream("State")));
+    validateProject({
+      ...state,
+      format: "lirapdf",
+      version: 1,
+      pdf: "embedded",
+    });
+    source = await PDFDocument.load(sourceBytes);
+    if (
+      source.getPageCount() !== doc.getPageCount() ||
+      state.entities.some((e) => e.page > source.getPageCount())
+    )
+      throw Error("PDF:ens sidor stämmer inte med dess redigeringsdata.");
+  }
+  const imported = importAnnotations(
+    doc,
+    source,
+    version === 2 ? state.entities : [],
+  );
+  if (!version && !imported.entities.length) return null;
+  // In v2 standard annotations are authoritative, including deletion by another editor.
+  const remaining =
+    version === 2
+      ? state.entities.filter((e) => !isStandardEntity(e))
+      : state.entities;
+  const ids = new Set(remaining.map((e) => e.id));
+  for (const entity of imported.entities) {
+    if (ids.has(entity.id)) entity.id = `pdf-${crypto.randomUUID()}`;
+    ids.add(entity.id);
+  }
+  state.entities = [...remaining, ...imported.entities];
+  if (version === 2) {
+    state.rotations = {};
+    for (let i = 0; i < doc.getPageCount(); i++) {
+      const angle =
+        (((doc.getPage(i).getRotation().angle -
+          source.getPage(i).getRotation().angle) %
+          360) +
+          360) %
+        360;
+      if (angle) state.rotations[i + 1] = angle;
+    }
+  }
+  // If an external editor moves part of a group to another page, split that group.
+  const groups = new Map();
+  for (const e of state.entities)
+    if (e.groupId) {
+      if (groups.has(e.groupId) && groups.get(e.groupId) !== e.page)
+        delete e.groupId;
+      else groups.set(e.groupId, e.page);
+    }
   validateProject({ ...state, format: "lirapdf", version: 1, pdf: "embedded" });
-  const original = await PDFDocument.load(source);
-  if (
-    original.getPageCount() !== doc.getPageCount() ||
-    state.entities.some((e) => e.page > original.getPageCount())
-  )
-    throw Error("PDF:ens sidor stämmer inte med dess redigeringsdata.");
-  return { bytes: source, state };
+  if (imported.changed) pruneUnusedObjects(source);
+  return { bytes: imported.changed ? await source.save() : sourceBytes, state };
 }
 
 export async function saveEditablePdf(bytes, state, pdf) {
+  const source = await PDFDocument.load(bytes);
   const visible = await exportPdf(
     bytes,
-    state.entities,
+    state.entities.filter((e) => !isStandardEntity(e)),
     state.scales,
     pdf,
     state.rotations || {},
   );
   const doc = await PDFDocument.load(visible);
-  const source = doc.context.register(doc.context.flateStream(bytes));
+  await writeAnnotations(doc, source, state.entities, pdf);
+  const original = doc.context.register(doc.context.flateStream(bytes));
   const editing = doc.context.register(
     doc.context.flateStream(new TextEncoder().encode(JSON.stringify(state))),
   );
   doc.catalog.set(
     key,
-    doc.context.obj({ Version: 1, Source: source, State: editing }),
+    doc.context.obj({ Version: 2, Source: original, State: editing }),
   );
+  pruneUnusedObjects(doc);
   return doc.save();
 }

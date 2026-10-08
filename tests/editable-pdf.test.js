@@ -49,11 +49,27 @@ test("a saved PDF shows marks in ordinary readers and restores original PDF, gro
   const result = await saveEditablePdf(bytes, state, viewer);
   const visible = await PDFDocument.load(result);
   assert.equal(visible.getPageCount(), 2);
-  assert.ok(visible.getPage(0).node.Contents());
+  assert.equal(visible.getPage(0).node.Annots().size(), 2);
   assert.equal(visible.getPage(1).getRotation().angle, 90);
   const restored = await readEditablePdf(result);
-  assert.deepEqual(restored.bytes, bytes);
-  assert.deepEqual(restored.state, state);
+  assert.equal(
+    (await PDFDocument.load(restored.bytes)).getPage(0).node.Annots(),
+    undefined,
+  );
+  assert.deepEqual(restored.state.scales, state.scales);
+  assert.deepEqual(restored.state.rotations, state.rotations);
+  assert.deepEqual(
+    restored.state.entities.map((e) => ({
+      ...e,
+      opacity: undefined,
+      pdfAnnotationId: undefined,
+    })),
+    state.entities.map((e) => ({
+      ...e,
+      opacity: undefined,
+      pdfAnnotationId: undefined,
+    })),
+  );
 });
 
 test("saving reopened PDFs repeatedly does not duplicate marks or nest prior saved PDFs", async () => {
@@ -63,7 +79,14 @@ test("saving reopened PDFs repeatedly does not duplicate marks or nest prior sav
   const reopened = await readEditablePdf(first);
   const second = await saveEditablePdf(reopened.bytes, reopened.state, viewer);
   const again = await readEditablePdf(second);
-  assert.deepEqual(again.bytes, bytes);
+  assert.equal(
+    (await PDFDocument.load(again.bytes)).catalog.has(PDFName.of("LiraPDF")),
+    false,
+  );
+  assert.equal(
+    (await PDFDocument.load(again.bytes)).getPage(0).node.Annots(),
+    undefined,
+  );
   assert.equal(again.state.entities.length, 1);
   const clean = await saveEditablePdf(
     again.bytes,
