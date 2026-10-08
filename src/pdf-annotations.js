@@ -9,6 +9,7 @@ import {
   PDFStream,
 } from "pdf-lib";
 
+import { markupRect, transformMarkup } from "./pdf-markup.js";
 import { arcPoints } from "./core.js";
 
 // Annotation references may lead back through Popup/Parent to their page.
@@ -123,6 +124,14 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
     "/Ink": "freehand",
   }[subtype];
   if (!type) return null;
+  if (
+    value(annotation, "IT")?.toString() === "/CircleArc" ||
+    annotation.has(key("Angle1")) ||
+    annotation.has(key("Angle2")) ||
+    (value(annotation, "BM") &&
+      value(annotation, "BM").toString() !== "/Normal")
+  )
+    return null;
   const flags = number(annotation, "F", 0);
   // Preserve invisible, locked, measured and visually complex markups unchanged.
   if (
@@ -264,6 +273,97 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
   return entity;
 }
 
+function parsePreservedMarkup(annotation, page, pageNo, metadata, id) {
+  if (
+    ![
+      "/FreeText",
+      "/Line",
+      "/PolyLine",
+      "/Polygon",
+      "/Square",
+      "/Circle",
+      "/Ink",
+      "/Stamp",
+      "/Highlight",
+      "/Underline",
+      "/StrikeOut",
+      "/Squiggly",
+    ].includes(value(annotation, "Subtype")?.toString())
+  )
+    return null;
+  if (number(annotation, "F", 0) & (1 | 2 | 8 | 16 | 32 | 64 | 128 | 512))
+    return null;
+  const rect = numbers(value(annotation, "Rect")),
+    ap = value(annotation, "AP");
+  if (
+    !rect ||
+    rect.length !== 4 ||
+    rect[2] <= rect[0] ||
+    rect[3] <= rect[1] ||
+    !(ap instanceof PDFDict)
+  )
+    return null;
+  const appearance = value(ap, "N");
+  if (
+    !(appearance instanceof PDFStream) ||
+    !numbers(value(appearance.dict, "BBox"))
+  )
+    return null;
+  const bbox = numbers(value(appearance.dict, "BBox")),
+    matrix = numbers(value(appearance.dict, "Matrix"));
+  if (
+    bbox.length !== 4 ||
+    bbox[2] <= bbox[0] ||
+    bbox[3] <= bbox[1] ||
+    (appearance.dict.has(key("Matrix")) &&
+      (!matrix ||
+        matrix.length !== 6 ||
+        Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]) < 1e-12))
+  )
+    return null;
+  if (
+    value(annotation, "BM") &&
+    !["/Normal", "/Multiply"].includes(value(annotation, "BM").toString())
+  )
+    return null;
+  const mapping = annotationCoordinates(page);
+  const entity = {
+    ...(metadata || {}),
+    id,
+    page: pageNo,
+    type: "pdfMarkup",
+    points: [
+      mapping.fromPdf(rect[0], rect[1]),
+      mapping.fromPdf(rect[2], rect[3]),
+    ],
+    color: annotationColor(numbers(value(annotation, "C")) || []) || "#000000",
+    width: Math.max(
+      0.2,
+      Math.min(
+        100,
+        number(
+          value(annotation, "BS") instanceof PDFDict
+            ? value(annotation, "BS")
+            : annotation,
+          "W",
+          1,
+        ) * mapping.unit,
+      ),
+    ),
+    fontSize: 12,
+    opacity: 1,
+    pdfAnnotationId: id,
+    pdfSubtype: value(annotation, "Subtype").toString().slice(1),
+    label: text(value(annotation, "Subj")) || "PDF-markering",
+    blendMode:
+      value(annotation, "BM")?.toString() === "/Multiply"
+        ? "multiply"
+        : "normal",
+  };
+  delete entity.fillColor;
+  return entity;
+}
+
 function restoredArc(control, actual) {
   const expected = arcPoints(...control);
   if (expected.length !== actual.length) return null;
@@ -313,7 +413,9 @@ export function importAnnotations(current, source, metadata = []) {
         id = `pdf-${crypto.randomUUID()}`;
       if (original instanceof PDFDict) {
         try {
-          entity = parseAnnotation(original, page, i + 1, known.get(id), id);
+          entity =
+            parseAnnotation(original, page, i + 1, known.get(id), id) ||
+            parsePreservedMarkup(original, page, i + 1, known.get(id), id);
         } catch {
           /* Keep unfamiliar annotations visible. */
         }
@@ -348,9 +450,16 @@ export function importAnnotations(current, source, metadata = []) {
 }
 
 export const isStandardEntity = (entity) =>
-  ["line", "polyline", "rect", "circle", "ellipse", "arc", "freehand"].includes(
-    entity.type,
-  );
+  [
+    "line",
+    "polyline",
+    "rect",
+    "circle",
+    "ellipse",
+    "arc",
+    "freehand",
+    "pdfMarkup",
+  ].includes(entity.type);
 
 export async function writeAnnotations(doc, source, entities, pdf) {
   const originals = doc.catalog.lookupMaybe(archiveKey, PDFDict);
@@ -378,6 +487,26 @@ export async function writeAnnotations(doc, source, entities, pdf) {
       const annotationRef = reuse
         ? originalRef
         : doc.context.register(annotation);
+      if (entity.type === "pdfMarkup") {
+        if (!originalRef) throw Error("PDF-markeringens original saknas.");
+        if (!reuse && annotation.has(key("BS")))
+          annotation.set(
+            key("BS"),
+            annotation.lookup(key("BS"), PDFDict).clone(doc.context),
+          );
+        transformMarkup(annotation, doc, markupRect(entity, vp));
+        annotation.set(key("NM"), PDFHexString.fromText(entity.id));
+        annotation.set(key("P"), page.ref);
+        page.node.addAnnot(annotationRef);
+        const popupRef = annotation.get(key("Popup"));
+        if (popupRef) {
+          const popup = doc.context.lookup(popupRef, PDFDict);
+          popup.set(key("Parent"), annotationRef);
+          popup.set(key("P"), page.ref);
+          page.node.addAnnot(popupRef);
+        }
+        continue;
+      }
       const convert = (p) => vp.convertToPdfPoint(p.x, p.y);
       let points = (
         entity.type === "arc" ? arcPoints(...entity.points) : entity.points

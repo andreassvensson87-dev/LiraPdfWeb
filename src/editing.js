@@ -7,6 +7,7 @@ export const editableTypes = [
   "line",
   "circle",
   "ellipse",
+  "pdfMarkup",
   "rect",
   "arc",
   "text",

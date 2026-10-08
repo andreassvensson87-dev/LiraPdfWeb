@@ -26,7 +26,7 @@ export async function readEditablePdf(bytes) {
   if (doc.catalog.has(key)) {
     const data = doc.catalog.lookup(key, PDFDict);
     version = data.lookup(PDFName.of("Version"), PDFNumber).asNumber();
-    if (![1, 2, 3, 4].includes(version))
+    if (![1, 2, 3, 4, 5].includes(version))
       throw Error(
         "PDF:en innehåller redigeringsdata från en version av LiraPDF som inte stöds.",
       );
@@ -112,7 +112,7 @@ export async function saveEditablePdf(bytes, state, pdf) {
   );
   doc.catalog.set(
     key,
-    doc.context.obj({ Version: 4, Source: original, State: editing }),
+    doc.context.obj({ Version: 5, Source: original, State: editing }),
   );
   pruneUnusedObjects(doc);
   return doc.save();

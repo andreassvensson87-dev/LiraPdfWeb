@@ -174,6 +174,7 @@ export function validateProject(p) {
     polyline: -1,
     freehand: -1,
     viewport: 2,
+    pdfMarkup: 2,
     pdfErase: 2,
     block: 1,
     line: 2,
@@ -221,6 +222,18 @@ export function validateProject(p) {
       ("text" in e && typeof e.text !== "string")
     )
       throw Error("Projektet innehåller ogiltiga objekt.");
+    if (
+      e.type === "pdfMarkup" &&
+      (typeof e.pdfAnnotationId !== "string" ||
+        !e.pdfAnnotationId.length ||
+        e.pdfAnnotationId.length > 100 ||
+        typeof e.label !== "string" ||
+        typeof e.pdfSubtype !== "string" ||
+        !["normal", "multiply"].includes(e.blendMode) ||
+        box(...e.points).w <= 0 ||
+        box(...e.points).h <= 0)
+    )
+      throw Error("Ogiltig originalmarkering.");
     if (e.groupId !== undefined) {
       if (
         typeof e.groupId !== "string" ||

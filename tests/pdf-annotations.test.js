@@ -804,3 +804,244 @@ test("new freehand saves as unlocked Ink with pen metadata and editable coordina
   );
   assert.equal(reopened.opacity, 0.6);
 });
+
+function special(doc, data) {
+  const annotation = add(doc, data);
+  const form = doc.context.flateStream("q 1 0 0 RG 1 w 0 0 m 100 100 l S Q", {
+    Type: "XObject",
+    Subtype: "Form",
+    BBox: [0, 0, 100, 100],
+    Resources: {},
+  });
+  annotation.set(k("AP"), doc.context.obj({ N: doc.context.register(form) }));
+  return annotation;
+}
+
+test("Bluebeam arc, arrow, cloud, callout, dimension, multiply ink and stamp retain native objects", async () => {
+  const doc = await document();
+  const shapes = [
+    {
+      Subtype: "Circle",
+      IT: "CircleArc",
+      Angle1: 90,
+      Angle2: 180,
+      RD: [0.5, 0.5, 0.5, 0.5],
+    },
+    {
+      Subtype: "Line",
+      IT: "LineArrow",
+      L: [20, 40, 80, 100],
+      LE: ["None", "ClosedArrow"],
+      IC: [1, 0, 0],
+    },
+    {
+      Subtype: "Polygon",
+      IT: "PolygonCloud",
+      Vertices: [20, 40, 80, 100, 100, 40],
+      BE: { S: "C", I: 2 },
+    },
+    {
+      Subtype: "FreeText",
+      IT: "FreeTextCallout",
+      CL: [20, 40, 40, 60, 80, 60],
+      DA: PDFString.of("1 0 0 rg /Helv 12 Tf"),
+      DS: PDFString.of("font: Helvetica 12pt; margin:3pt"),
+      RC: PDFString.of('<p style="font:12pt">hello</p>'),
+      Contents: PDFString.of("hello"),
+      C: [],
+      BS: { W: 0, S: "S" },
+    },
+    {
+      Subtype: "Line",
+      IT: "LineDimension",
+      L: [20, 40, 80, 100],
+      LE: ["ClosedArrow", "ClosedArrow"],
+      LL: 10,
+      LLE: 2,
+    },
+    {
+      Subtype: "Ink",
+      InkList: [[20, 40, 80, 100]],
+      BM: "Multiply",
+      C: [1, 1, 0],
+      BS: { W: 12, S: "S" },
+    },
+    { Subtype: "Stamp", Name: "Draft" },
+  ];
+  shapes.forEach((shape, i) =>
+    special(doc, {
+      ...shape,
+      NM: PDFString.of(`special-${i}`),
+      Subj: PDFString.of(`Example ${i}`),
+    }),
+  );
+  const imported = await readEditablePdf(await doc.save());
+  assert.equal(imported.state.entities.length, 7);
+  assert.ok(imported.state.entities.every((e) => e.type === "pdfMarkup"));
+  const state = structuredClone(imported.state);
+  state.entities.forEach(
+    (e) => (e.points = e.points.map((p) => ({ x: p.x + 10, y: p.y + 15 }))),
+  );
+  const saved = await PDFDocument.load(
+    await saveEditablePdf(imported.bytes, state, viewer(doc)),
+  );
+  const annotations = annots(saved);
+  assert.equal(annotations.length, 7);
+  for (let i = 0; i < shapes.length; i++) {
+    const a = annotations[i];
+    assert.equal(a.lookup(k("Subtype")).toString(), `/${shapes[i].Subtype}`);
+    if (shapes[i].IT)
+      assert.equal(a.lookup(k("IT")).toString(), `/${shapes[i].IT}`);
+    assert.deepEqual(
+      a
+        .lookup(k("Rect"))
+        .asArray()
+        .map((n) => n.asNumber()),
+      [20, 5, 110, 105],
+    );
+    assert.equal(
+      new TextDecoder().decode(
+        decodePDFRawStream(a.lookup(k("AP"), PDFDict).lookup(k("N"))).decode(),
+      ),
+      "q 1 0 0 RG 1 w 0 0 m 100 100 l S Q",
+    );
+  }
+  assert.deepEqual(
+    annotations[1]
+      .lookup(k("L"))
+      .asArray()
+      .map((n) => n.asNumber()),
+    [30, 25, 90, 85],
+  );
+  assert.deepEqual(
+    annotations[3]
+      .lookup(k("CL"))
+      .asArray()
+      .map((n) => n.asNumber()),
+    [30, 25, 50, 45, 90, 45],
+  );
+  assert.equal(annotations[5].lookup(k("BM")).toString(), "/Multiply");
+  saved.catalog.delete(k("LiraPDF"));
+  assert.equal(
+    (await readEditablePdf(await saved.save())).state.entities.length,
+    7,
+  );
+});
+
+test("special markups support copy, proportional resize and external deletion without changing source", async () => {
+  const doc = await document();
+  special(doc, {
+    Subtype: "FreeText",
+    NM: PDFString.of("callout"),
+    IT: "FreeTextCallout",
+    CL: [20, 40, 40, 60, 80, 60],
+    DA: PDFString.of("/Helv 12 Tf"),
+    DS: PDFString.of("font:12pt; margin:3pt"),
+    Contents: PDFString.of("hello"),
+  });
+  const imported = await readEditablePdf(await doc.save()),
+    copy = structuredClone(imported.state.entities[0]);
+  copy.id = "copied";
+  const fixed = copy.points[0];
+  copy.points[1] = {
+    x: fixed.x + (copy.points[1].x - fixed.x) * 2,
+    y: fixed.y + (copy.points[1].y - fixed.y) * 2,
+  };
+  imported.state.entities.push(copy);
+  const saved = await PDFDocument.load(
+      await saveEditablePdf(imported.bytes, imported.state, viewer(doc)),
+    ),
+    a = annots(saved);
+  assert.equal(a.length, 2);
+  assert.equal(a[0].lookup(k("BS"), PDFDict).lookup(k("W")).asNumber(), 2);
+  assert.equal(a[1].lookup(k("BS"), PDFDict).lookup(k("W")).asNumber(), 4);
+  assert.equal(a[0].lookup(k("DA")).decodeText(), "/Helv 12 Tf");
+  assert.equal(a[1].lookup(k("DA")).decodeText(), "/Helv 24 Tf");
+  assert.equal(a[1].lookup(k("DS")).decodeText(), "font:24pt; margin:6pt");
+  assert.equal(a[1].lookup(k("Contents")).decodeText(), "hello");
+  saved.getPage(0).node.Annots().remove(0);
+  const reopened = await readEditablePdf(await saved.save());
+  assert.equal(reopened.state.entities.length, 1);
+  assert.equal(reopened.state.entities[0].id, "copied");
+});
+
+test("CircleArc without an appearance is never misread as a full ellipse", async () => {
+  const doc = await document();
+  add(doc, { Subtype: "Circle", IT: "CircleArc", Angle1: 90, Angle2: 180 });
+  assert.equal(await readEditablePdf(await doc.save()), null);
+});
+
+test("preserved appearance preview and flattened export retain vector forms, including Multiply", async () => {
+  const { markupPreviewPdf } = await import("../src/pdf-markup.js");
+  const { exportPdf } = await import("../src/export.js");
+  const doc = await document();
+  special(doc, { Subtype: "Stamp", NM: PDFString.of("stamp") });
+  special(doc, {
+    Subtype: "Ink",
+    NM: PDFString.of("highlight"),
+    InkList: [[20, 40, 80, 100]],
+    BM: "Multiply",
+  });
+  const imported = await readEditablePdf(await doc.save());
+  const preview = await PDFDocument.load(
+    await markupPreviewPdf(imported.bytes, imported.state.entities[0]),
+  );
+  assert.ok(preview.getPage(0).node.Contents());
+  assert.ok(
+    preview.getPage(0).node.Resources().lookup(k("XObject"), PDFDict).keys()
+      .length > 0,
+  );
+  const exported = await PDFDocument.load(
+    await exportPdf(imported.bytes, imported.state.entities, {}, viewer(doc)),
+  );
+  assert.equal(exported.getPage(0).node.Annots()?.size() || 0, 0);
+  const resources = exported.getPage(0).node.Resources();
+  assert.equal(resources.lookup(k("XObject"), PDFDict).keys().length, 2);
+  const gs = resources.lookup(k("ExtGState"), PDFDict);
+  assert.ok(
+    gs
+      .values()
+      .some(
+        (ref) =>
+          exported.context.lookup(ref, PDFDict).lookup(k("BM")).toString() ===
+          "/Multiply",
+      ),
+  );
+});
+
+test("preserved markups keep appearance orientation on cropped and rotated pages", async () => {
+  const { markupPreviewPdf } = await import("../src/pdf-markup.js");
+  for (const rotation of [0, 90, 180, 270]) {
+    const doc = await document();
+    doc.getPage(0).setCropBox(5, 10, 180, 260);
+    doc.getPage(0).setRotation(degrees(rotation));
+    doc.getPage(0).node.set(k("UserUnit"), PDFNumber.of(2));
+    special(doc, { Subtype: "Stamp", NM: PDFString.of("stamp") });
+    const imported = await readEditablePdf(await doc.save());
+    const preview = await PDFDocument.load(
+      await markupPreviewPdf(imported.bytes, imported.state.entities[0]),
+    );
+    assert.equal(preview.getPage(0).getRotation().angle, rotation);
+    const saved = await PDFDocument.load(
+      await saveEditablePdf(imported.bytes, imported.state, viewer(doc)),
+    );
+    assert.deepEqual(
+      annots(saved)[0]
+        .lookup(k("Rect"))
+        .asArray()
+        .map((n) => n.asNumber()),
+      [10, 20, 100, 120],
+    );
+  }
+});
+
+test("locked and malformed special appearances remain in the PDF underlay", async () => {
+  const doc = await document();
+  special(doc, { Subtype: "Stamp", F: 128 });
+  const invalid = special(doc, { Subtype: "Circle", IT: "CircleArc" });
+  invalid
+    .lookup(k("AP"), PDFDict)
+    .lookup(k("N"))
+    .dict.set(k("Matrix"), doc.context.obj([0, 0, 0, 0, 0, 0]));
+  assert.equal(await readEditablePdf(await doc.save()), null);
+});

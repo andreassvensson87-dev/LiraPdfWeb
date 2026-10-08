@@ -9,6 +9,11 @@ import {
 import { applyLineRemovals } from "./pdf-line-edit.js";
 import { blockCorners } from "./pdf-block.js";
 import { entityScale, viewportCaption } from "./viewports.js";
+import {
+  originalMarkup,
+  markupRect,
+  drawMarkupAppearance,
+} from "./pdf-markup.js";
 import { primitives } from "./core.js";
 const parseColor = (c) =>
   rgb(
@@ -37,6 +42,12 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
     for (const e of entities.filter((e) => e.page === i + 1)) {
       if (e.type === "pdfErase" || (e.type === "viewport" && !e.showLabel))
         continue;
+      if (e.type === "pdfMarkup") {
+        const original = originalMarkup(doc, e);
+        if (!original) throw Error("PDF-markeringens original saknas.");
+        drawMarkupAppearance(doc, page, doc, original, markupRect(e, vp));
+        continue;
+      }
       const opacity = e.opacity ?? 1;
       if (opacity === 0) continue;
       // Composite each object once, so overlapping segments keep uniform opacity.

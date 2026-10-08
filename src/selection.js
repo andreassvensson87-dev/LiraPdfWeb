@@ -38,7 +38,11 @@ export function inSelection(e, a, b, scale = 1, textRects = []) {
     fills = [];
   const outline = (pts) =>
     pts.forEach((p, i) => lines.push([p, pts[(i + 1) % pts.length]]));
-  if (e.type === "viewport") outline(corners(box(...e.points)));
+  if (e.type === "pdfMarkup") {
+    const pts = corners(box(...e.points));
+    outline(pts);
+    fills.push(pts);
+  } else if (e.type === "viewport") outline(corners(box(...e.points)));
   else if (e.type === "block") {
     const pts = blockCorners(e);
     outline(pts);

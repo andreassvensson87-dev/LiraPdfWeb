@@ -135,6 +135,7 @@ import {
   primitives,
   validateProject,
 } from "./core.js";
+import { markupPreviewPdf, loadMarkupSource } from "./pdf-markup.js";
 import { loadPdf, demoPdf, exportPdf } from "./pdf.js";
 import { readSaved, writeSaved } from "./storage.js";
 const $ = (id) => document.getElementById(id),
@@ -263,6 +264,7 @@ const names = Object.fromEntries(tools.map((t) => [t[0], t[2]]));
 Object.assign(names, {
   polyline: "Polylinje",
   ellipse: "Ellips",
+  pdfMarkup: "PDF-markering",
   calibrate: "Kalibrera",
   replace: "Täck och ersätt",
 });
@@ -634,6 +636,44 @@ function svg(tag, attrs, parent = $("overlay")) {
   parent.append(n);
   return n;
 }
+const markupPreviews = new Map();
+const markupPreviewKey = (entity, documentId = activeId) =>
+  `${documentId}:${entity.pdfAnnotationId || entity.id}`;
+async function prepareMarkupPreviews() {
+  const documentId = activeId,
+    sourceBytes = bytes;
+  const pending = state.entities.filter(
+    (e) =>
+      e.type === "pdfMarkup" &&
+      !markupPreviews.has(markupPreviewKey(e, documentId)),
+  );
+  if (!pending.length) return;
+  const source = await loadMarkupSource(sourceBytes);
+  for (const entity of pending) {
+    if (documentId !== activeId || sourceBytes !== bytes) return;
+    const key = markupPreviewKey(entity, documentId);
+    if (markupPreviews.has(key)) continue;
+    const instance = await loadPdf(await markupPreviewPdf(source, entity));
+    try {
+      const page = await instance.getPage(1),
+        base = page.getViewport({ scale: 1 });
+      const viewport = page.getViewport({
+        scale: Math.min(2, 2048 / Math.max(base.width, base.height)),
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      await page.render({
+        canvasContext: canvas.getContext("2d"),
+        viewport,
+        background: "rgba(0,0,0,0)",
+      }).promise;
+      markupPreviews.set(key, canvas.toDataURL("image/png"));
+    } finally {
+      await instance.destroy();
+    }
+  }
+}
 function drawEntity(e, preview = false, parent = $("overlay")) {
   const g = svg(
     "g",
@@ -648,6 +688,58 @@ function drawEntity(e, preview = false, parent = $("overlay")) {
     parent === $("overlay") &&
     !preview &&
     (selection.has(e.id) || editOperation?.ids.includes(e.id));
+  if (e.type === "pdfMarkup") {
+    const rect = box(...e.points),
+      image = markupPreviews.get(markupPreviewKey(e));
+    g.style.mixBlendMode = e.blendMode || "normal";
+    if (image)
+      svg(
+        "image",
+        {
+          href: image,
+          x: rect.x,
+          y: rect.y,
+          width: rect.w,
+          height: rect.h,
+          preserveAspectRatio: "none",
+          "pointer-events": "none",
+        },
+        g,
+      );
+    svg(
+      "rect",
+      {
+        x: rect.x,
+        y: rect.y,
+        width: rect.w,
+        height: rect.h,
+        fill: "transparent",
+        stroke: isSelected ? "#147b60" : "none",
+        "stroke-width": 1 / zoom,
+        "pointer-events": "all",
+      },
+      g,
+    );
+    if (isSelected)
+      e.points.forEach((p, i) =>
+        svg(
+          "rect",
+          {
+            x: p.x - 3.5 / zoom,
+            y: p.y - 3.5 / zoom,
+            width: 7 / zoom,
+            height: 7 / zoom,
+            fill: "#fff",
+            stroke: "#147b60",
+            "stroke-width": 1 / zoom,
+            "data-grip": i,
+            "data-id": e.id,
+          },
+          g,
+        ),
+      );
+    return;
+  }
   if (e.type === "freehand") {
     const attrs = {
       points: e.points.map((p) => `${p.x},${p.y}`).join(" "),
@@ -996,11 +1088,14 @@ function refresh() {
   $("toolname").textContent =
     selection.size > 1
       ? `${selection.size} objekt`
-      : names[current()?.type || tool];
+      : current()?.type === "pdfMarkup"
+        ? current().label
+        : names[current()?.type || tool];
   const activeType = current()?.type || tool;
   $("circleShapeControl").hidden =
     !!current() || !["circle", "ellipse"].includes(tool);
   const hasStyle =
+    activeType !== "pdfMarkup" &&
     activeType !== "viewport" &&
     activeType !== "block" &&
     activeType !== "select" &&
@@ -1022,11 +1117,13 @@ function refresh() {
     $("blockRotation").value = current().rotation;
   }
   $("styleControls").hidden = !hasStyle;
-  $("transparencyControl").hidden = !(
-    hasStyle ||
-    ["viewport", "block", "mask"].includes(activeType) ||
-    selection.size > 1
-  );
+  $("transparencyControl").hidden =
+    state.entities.some((e) => selection.has(e.id) && e.type === "pdfMarkup") ||
+    !(
+      hasStyle ||
+      ["viewport", "block", "mask"].includes(activeType) ||
+      selection.size > 1
+    );
   $("transparencyValue").value = `${$("transparency").value} %`;
 
   $("selectionHint").hidden =
@@ -1034,19 +1131,21 @@ function refresh() {
   $("selectionHint").textContent =
     selection.size > 1
       ? "Högerklick: gruppera · Ctrl/⌘-klick: välj enskilt objekt"
-      : activeType === "coverLine"
-        ? "Täckning med vitt · originalet finns kvar"
-        : activeType === "eraseText"
-          ? "Tar bort den rödmarkerade texten ur PDF-innehållet"
-          : activeType === "eraseLine"
-            ? "Tar bort fristående raka streck ur PDF-innehållet"
-            : activeType === "extract"
-              ? "Hämta en kopia · originalet finns kvar"
-              : activeType === "calibrate"
-                ? "Välj två punkter med känt avstånd"
-                : activeType === "mask"
-                  ? "Vit täckning · originalinnehållet finns kvar"
-                  : "Välj ett verktyg eller ett objekt i ritningen";
+      : activeType === "pdfMarkup"
+        ? "Originalmarkering · flytta, kopiera, radera och ändra storlek med hörngrepp. Innehåll och utseende redigeras i Bluebeam."
+        : activeType === "coverLine"
+          ? "Täckning med vitt · originalet finns kvar"
+          : activeType === "eraseText"
+            ? "Tar bort den rödmarkerade texten ur PDF-innehållet"
+            : activeType === "eraseLine"
+              ? "Tar bort fristående raka streck ur PDF-innehållet"
+              : activeType === "extract"
+                ? "Hämta en kopia · originalet finns kvar"
+                : activeType === "calibrate"
+                  ? "Välj två punkter med känt avstånd"
+                  : activeType === "mask"
+                    ? "Vit täckning · originalinnehållet finns kvar"
+                    : "Välj ett verktyg eller ett objekt i ritningen";
   $("lineControl").querySelector("span").textContent =
     activeType === "freehand" ? "px" : "pt";
   $("width").setAttribute(
@@ -1291,6 +1390,8 @@ async function showPage(n, keepView = false, scrollPan = null) {
   const previous = renderTask;
   previous?.cancel();
   try {
+    await prepareMarkupPreviews();
+    if (token !== epoch) return;
     await pdfDetail.clear();
     if (previous) await previous.promise.catch(() => {});
     if (token !== epoch) return;
@@ -2542,7 +2643,8 @@ $("transparency").onchange = () => {
   $("transparency").value = Math.round((1 - opacity) * 100);
   if (selection.size) {
     const next = clone(state);
-    for (const e of next.entities) if (selection.has(e.id)) e.opacity = opacity;
+    for (const e of next.entities)
+      if (selection.has(e.id) && e.type !== "pdfMarkup") e.opacity = opacity;
     commit(next);
   }
   refresh();

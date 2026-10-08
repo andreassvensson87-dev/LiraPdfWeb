@@ -8,6 +8,17 @@ export function moveGrip(source, index, point) {
   if (e.type === "circle" && index === 0) {
     const delta = { x: point.x - e.points[0].x, y: point.y - e.points[0].y };
     e.points = e.points.map((p) => ({ x: p.x + delta.x, y: p.y + delta.y }));
+  } else if (e.type === "pdfMarkup") {
+    const fixed = e.points[1 - index],
+      old = e.points[index],
+      dx = old.x - fixed.x,
+      dy = old.y - fixed.y;
+    const factor =
+      ((point.x - fixed.x) * dx + (point.y - fixed.y) * dy) /
+      (dx * dx + dy * dy);
+    if (!Number.isFinite(factor) || factor <= 0.01)
+      throw Error("Markeringen behöver en större storlek.");
+    e.points[index] = { x: fixed.x + dx * factor, y: fixed.y + dy * factor };
   } else e.points[index] = { ...point };
   if (["line", "circle"].includes(e.type) && distance(...e.points) < 1e-7)
     throw Error("Längden eller radien måste vara större än noll.");
