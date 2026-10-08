@@ -192,6 +192,7 @@ const toolCategories = {
   line: "create",
   freehand: "create",
   circle: "create",
+  ellipse: "create",
   rect: "create",
   arc: "create",
   text: "create",
@@ -298,6 +299,7 @@ const counts = {
   viewport: 2,
   line: 2,
   circle: 2,
+  ellipse: 2,
   rect: 2,
   arc: 3,
   text: 1,
@@ -431,6 +433,7 @@ $("dialog").addEventListener("close", () => {
   pendingDialog?.(result);
   pendingDialog = null;
 });
+$("circleShape").onchange = () => setTool($("circleShape").value);
 function setTool(t) {
   objectMenu?.close();
   activeGrip = null;
@@ -455,6 +458,7 @@ function setTool(t) {
   if (drag?.kind === "entity") state = drag.before;
   drag = null;
   tool = t;
+  if (["circle", "ellipse"].includes(t)) $("circleShape").value = t;
   if (toolCategories[t]) showCategory(toolCategories[t]);
   points = [];
   hover = null;
@@ -506,7 +510,10 @@ for (const [id, icon, label, shortcut] of tools) {
     dim: '<path d="M4 5v14M20 5v14M4 12h16m-12-3-4 3 4 3m8-6 4 3-4 3"/>',
   };
   b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[id]}</svg><span>${label}</span>`;
-  b.onclick = () => (id === "block" ? library.open() : setTool(id));
+  b.onclick = () =>
+    id === "block"
+      ? library.open()
+      : setTool(id === "circle" ? $("circleShape").value : id);
   $("tools").append(b);
 }
 showCategory(activeCategory);
@@ -528,6 +535,7 @@ function prompt() {
       "Välj nästa punkt · längd · @dx,dy · längd<vinkel · Esc avslutar",
     ],
     circle: ["Välj centrum", "Välj radiepunkt eller skriv radie"],
+    ellipse: ["Välj ellipsens första hörn", "Välj motsatt hörn"],
     rect: ["Välj första hörnet", "Välj motsatt hörn"],
     arc: [
       "Välj bågens startpunkt",
@@ -990,6 +998,8 @@ function refresh() {
       ? `${selection.size} objekt`
       : names[current()?.type || tool];
   const activeType = current()?.type || tool;
+  $("circleShapeControl").hidden =
+    !!current() || !["circle", "ellipse"].includes(tool);
   const hasStyle =
     activeType !== "viewport" &&
     activeType !== "block" &&
@@ -1057,7 +1067,12 @@ function refresh() {
   paint();
   document
     .querySelectorAll("[data-tool]")
-    .forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
+    .forEach((b) =>
+      b.classList.toggle(
+        "active",
+        b.dataset.tool === (tool === "ellipse" ? "circle" : tool),
+      ),
+    );
   $("undo").disabled = !undoStack.length;
   $("redo").disabled = !redoStack.length;
   $("delete").disabled = !selection.size;
@@ -1814,6 +1829,11 @@ async function addPoint(p) {
     let text = "",
       replacementStyle = null;
     if (type === "arc") arcPoints(...ps);
+    if (
+      type === "ellipse" &&
+      (Math.abs(ps[1].x - ps[0].x) < 0.1 || Math.abs(ps[1].y - ps[0].y) < 0.1)
+    )
+      throw Error("Ellipsen behöver både bredd och höjd.");
     if (type === "dim") dimension(...ps);
     if (
       ["line", "circle", "rect", "replace", "mask"].includes(type) &&
@@ -3163,6 +3183,8 @@ const aliases = {
   OFFSET: "offset",
   L: "line",
   C: "circle",
+  EL: "ellipse",
+  ELLIPSE: "ellipse",
   REC: "rect",
   A: "arc",
   T: "text",
@@ -3489,10 +3511,17 @@ $("pageNumber").onchange = () => {
 initializeLiraShell();
 quickToolBar = setupQuickTools({
   host: document.querySelector("main > .workspace"),
-  tools: tools.filter(([id]) =>
-    ["freehand", "line", "rect", "circle", "arc", "text", "leader"].includes(
-      id,
-    ),
+  tools: [...tools, ["ellipse", "", "Ellips", "EL"]].filter(([id]) =>
+    [
+      "freehand",
+      "line",
+      "rect",
+      "circle",
+      "ellipse",
+      "arc",
+      "text",
+      "leader",
+    ].includes(id),
   ),
   current: () => ({ tool, ...style() }),
   canUse: () => !!pdf && !busy && !pendingDialog,

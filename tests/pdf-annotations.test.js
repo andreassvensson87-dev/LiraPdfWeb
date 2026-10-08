@@ -654,3 +654,153 @@ test("ellipse geometry and fill round-trip on rotated, cropped, scaled pages wit
       );
   }
 });
+
+test("Lira arcs save as editable polylines and retain arc grips through external move and scale", async () => {
+  const doc = await document(),
+    bytes = await doc.save();
+  const arc = {
+    ...entity("arc"),
+    points: [
+      { x: 20, y: 100 },
+      { x: 70, y: 40 },
+      { x: 120, y: 100 },
+    ],
+  };
+  const saved = await PDFDocument.load(
+    await saveEditablePdf(bytes, { entities: [arc], scales: {} }, viewer(doc)),
+  );
+  const annotation = annots(saved)[0];
+  assert.equal(annotation.lookup(k("Subtype")).toString(), "/PolyLine");
+  assert.equal(annotation.lookup(k("Vertices")).size(), 130);
+  assert.equal(annotation.lookup(k("F")).asNumber() & 128, 0);
+  const original = (await readEditablePdf(await saved.save())).state
+    .entities[0];
+  assert.equal(original.type, "arc");
+  for (let i = 0; i < 3; i++)
+    assert.ok(
+      Math.hypot(
+        original.points[i].x - arc.points[i].x,
+        original.points[i].y - arc.points[i].y,
+      ) < 1e-7,
+    );
+  const vertices = annotation.lookup(k("Vertices"));
+  annotation.set(
+    k("Vertices"),
+    saved.context.obj(
+      vertices
+        .asArray()
+        .map((_, i) => vertices.lookup(i).asNumber() * 1.5 + (i % 2 ? -10 : 5)),
+    ),
+  );
+  const moved = (await readEditablePdf(await saved.save())).state.entities[0];
+  assert.equal(moved.type, "arc");
+  assert.ok(Math.abs(moved.points[0].x - 35) < 1e-7);
+  assert.ok(Math.abs(moved.points[0].y - 10) < 1e-7);
+  const changed = annotation.lookup(k("Vertices"));
+  changed.set(20, PDFNumber.of(changed.lookup(20).asNumber() + 5));
+  const edited = (await readEditablePdf(await saved.save())).state.entities[0];
+  assert.equal(edited.type, "polyline");
+  assert.equal(edited.points.length, 65);
+  saved.catalog.delete(k("LiraPDF"));
+  assert.equal(
+    (await readEditablePdf(await saved.save())).state.entities[0].type,
+    "polyline",
+  );
+});
+
+test("externally deleted arcs do not return from private state", async () => {
+  const doc = await document();
+  const arc = {
+    ...entity("arc"),
+    points: [
+      { x: 20, y: 100 },
+      { x: 70, y: 40 },
+      { x: 120, y: 100 },
+    ],
+  };
+  const saved = await PDFDocument.load(
+    await saveEditablePdf(
+      await doc.save(),
+      { entities: [arc], scales: {} },
+      viewer(doc),
+    ),
+  );
+  saved.getPage(0).node.delete(k("Annots"));
+  assert.equal(
+    (await readEditablePdf(await saved.save())).state.entities.length,
+    0,
+  );
+});
+
+test("legacy v3 flattened arcs migrate to native annotations once", async () => {
+  const source = await document(),
+    bytes = await source.save(),
+    doc = await PDFDocument.load(bytes);
+  const arc = {
+    ...entity("arc"),
+    points: [
+      { x: 20, y: 100 },
+      { x: 70, y: 40 },
+      { x: 120, y: 100 },
+    ],
+  };
+  doc.catalog.set(
+    k("LiraPDF"),
+    doc.context.obj({
+      Version: 3,
+      Source: doc.context.register(doc.context.flateStream(bytes)),
+      State: doc.context.register(
+        doc.context.flateStream(
+          JSON.stringify({ entities: [arc], scales: {} }),
+        ),
+      ),
+    }),
+  );
+  const imported = await readEditablePdf(await doc.save());
+  assert.equal(imported.state.entities[0].type, "arc");
+  const saved = await saveEditablePdf(
+    imported.bytes,
+    imported.state,
+    viewer(source),
+  );
+  assert.equal(annots(await PDFDocument.load(saved)).length, 1);
+  assert.equal((await readEditablePdf(saved)).state.entities.length, 1);
+});
+
+test("new freehand saves as unlocked Ink with pen metadata and editable coordinates", async () => {
+  const doc = await document();
+  const ink = {
+    ...entity("freehand"),
+    points: [
+      { x: 20, y: 30 },
+      { x: 40, y: 20 },
+      { x: 70, y: 60 },
+    ],
+    opacity: 0.6,
+  };
+  const saved = await PDFDocument.load(
+    await saveEditablePdf(
+      await doc.save(),
+      { entities: [ink], scales: {} },
+      viewer(doc),
+    ),
+  );
+  const annotation = annots(saved)[0];
+  assert.equal(annotation.lookup(k("Subtype")).toString(), "/Ink");
+  assert.equal(annotation.lookup(k("Subj")).decodeText(), "Penna");
+  assert.equal(annotation.lookup(k("Contents")).decodeText(), "~");
+  assert.equal(annotation.lookup(k("F")).asNumber(), 4);
+  saved.catalog.delete(k("LiraPDF"));
+  annotation.set(
+    k("InkList"),
+    saved.context.obj([[25, 270, 45, 280, 75, 240]]),
+  );
+  const reopened = (await readEditablePdf(await saved.save())).state
+    .entities[0];
+  assert.equal(reopened.type, "freehand");
+  assert.deepEqual(
+    reopened.points,
+    ink.points.map((p) => ({ ...p, x: p.x + 5 })),
+  );
+  assert.equal(reopened.opacity, 0.6);
+});

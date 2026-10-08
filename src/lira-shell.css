@@ -523,7 +523,8 @@ body[data-lira-app="pdf"] .lira-inspector .properties label {
 body[data-lira-app="pdf"]
   .lira-inspector
   .properties
-  input:not([type="checkbox"]):not([type="range"]) {
+  input:not([type="checkbox"]):not([type="range"]),
+body[data-lira-app="pdf"] .lira-inspector .properties select {
   grid-column: 2;
   margin: 0;
   width: 100%;

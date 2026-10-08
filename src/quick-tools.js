@@ -2,6 +2,7 @@ const icons = {
   freehand: '<path d="M3 17c3-10 5 7 8-3s4-10 5-5M14 7l5-5 3 3-5 5-4 1Z"/>',
   line: '<path d="M5 19 19 5"/>',
   rect: '<rect x="3" y="5" width="18" height="14" rx="1"/>',
+  ellipse: '<ellipse cx="12" cy="12" rx="9" ry="6"/>',
   circle: '<circle cx="12" cy="12" r="8"/>',
   arc: '<path d="M4 19A15 15 0 0 1 19 4"/>',
   text: '<path d="M5 5h14M12 5v15M8 20h8"/>',

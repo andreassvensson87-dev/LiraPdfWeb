@@ -9,6 +9,8 @@ import {
   PDFStream,
 } from "pdf-lib";
 
+import { arcPoints } from "./core.js";
+
 // Annotation references may lead back through Popup/Parent to their page.
 // Map those pages to the existing destination pages instead of copying page trees.
 function annotationCopier(from, to) {
@@ -233,6 +235,17 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
         y: center.y + rx * Math.sin(angle),
       });
   }
+  if (
+    type === "polyline" &&
+    subtype === "/PolyLine" &&
+    metadata?.type === "arc"
+  ) {
+    const control = restoredArc(metadata.points, points);
+    if (control) {
+      type = "arc";
+      points.splice(0, points.length, ...control);
+    }
+  }
   const entity = {
     ...(metadata || {}),
     id,
@@ -249,6 +262,33 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
   };
   if (!fillColor) delete entity.fillColor;
   return entity;
+}
+
+function restoredArc(control, actual) {
+  const expected = arcPoints(...control);
+  if (expected.length !== actual.length) return null;
+  const a = expected[0],
+    b = expected.at(-1),
+    p = actual[0],
+    q = actual.at(-1);
+  const dx = b.x - a.x,
+    dy = b.y - a.y,
+    length = dx * dx + dy * dy;
+  if (length < 1e-10) return null;
+  const u = ((q.x - p.x) * dx + (q.y - p.y) * dy) / length;
+  const v = ((q.y - p.y) * dx - (q.x - p.x) * dy) / length;
+  const transform = (r) => ({
+    x: p.x + u * (r.x - a.x) - v * (r.y - a.y),
+    y: p.y + v * (r.x - a.x) + u * (r.y - a.y),
+  });
+  if (
+    expected.some((r, i) => {
+      const t = transform(r);
+      return Math.hypot(t.x - actual[i].x, t.y - actual[i].y) > 0.001;
+    })
+  )
+    return null;
+  return control.map(transform);
 }
 
 // Supported marks become editor objects; other annotations remain on the PDF page.
@@ -308,7 +348,7 @@ export function importAnnotations(current, source, metadata = []) {
 }
 
 export const isStandardEntity = (entity) =>
-  ["line", "polyline", "rect", "circle", "ellipse", "freehand"].includes(
+  ["line", "polyline", "rect", "circle", "ellipse", "arc", "freehand"].includes(
     entity.type,
   );
 
@@ -339,7 +379,9 @@ export async function writeAnnotations(doc, source, entities, pdf) {
         ? originalRef
         : doc.context.register(annotation);
       const convert = (p) => vp.convertToPdfPoint(p.x, p.y);
-      let points = entity.points.map(convert);
+      let points = (
+        entity.type === "arc" ? arcPoints(...entity.points) : entity.points
+      ).map(convert);
       if (entity.type === "rect") {
         const [a, b] = points;
         points = [
@@ -387,6 +429,7 @@ export async function writeAnnotations(doc, source, entities, pdf) {
         circle: "Circle",
         ellipse: "Circle",
         freehand: "Ink",
+        arc: "PolyLine",
       }[entity.type];
       const put = (name, data) =>
         annotation.set(key(name), doc.context.obj(data));
@@ -394,6 +437,23 @@ export async function writeAnnotations(doc, source, entities, pdf) {
         annotation.delete(key(name));
       put("P", page.ref);
       put("Subtype", subtype);
+      if (!annotation.has(key("Subj")))
+        put(
+          "Subj",
+          PDFHexString.fromText(
+            {
+              line: "Linje",
+              polyline: entity.closed ? "Polygon" : "Polylinje",
+              rect: "Rektangel",
+              circle: "Ellips",
+              ellipse: "Ellips",
+              arc: "Polylinje",
+              freehand: "Penna",
+            }[entity.type],
+          ),
+        );
+      if (entity.type === "freehand" && !annotation.has(key("Contents")))
+        put("Contents", PDFString.of("~"));
       put("Rect", rect);
       put("C", color);
       const fill = entity.fillColor
@@ -418,7 +478,8 @@ export async function writeAnnotations(doc, source, entities, pdf) {
       );
       put("F", number(annotation, "F", 0) | 4);
       if (entity.type === "line") put("L", points.flat());
-      if (entity.type === "polyline") put("Vertices", points.flat());
+      if (["polyline", "arc"].includes(entity.type))
+        put("Vertices", points.flat());
       if (entity.type === "freehand") put("InkList", [points.flat()]);
       if (["rect", "circle", "ellipse"].includes(entity.type))
         put("RD", [pad, pad, pad, pad]);

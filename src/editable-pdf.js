@@ -26,7 +26,7 @@ export async function readEditablePdf(bytes) {
   if (doc.catalog.has(key)) {
     const data = doc.catalog.lookup(key, PDFDict);
     version = data.lookup(PDFName.of("Version"), PDFNumber).asNumber();
-    if (![1, 2, 3].includes(version))
+    if (![1, 2, 3, 4].includes(version))
       throw Error(
         "PDF:en innehåller redigeringsdata från en version av LiraPDF som inte stöds.",
       );
@@ -54,11 +54,14 @@ export async function readEditablePdf(bytes) {
   );
   if (!version && !imported.entities.length) return null;
   // Standard annotations are authoritative, including external deletions.
-  // Circles were flattened in v2, so keep their legacy state until saved as v3.
+  // Circles were flattened in v2 and arcs through v3; migrate their legacy state.
   const remaining =
     version >= 2
       ? state.entities.filter(
-          (e) => !isStandardEntity(e) || (version === 2 && e.type === "circle"),
+          (e) =>
+            !isStandardEntity(e) ||
+            (version === 2 && e.type === "circle") ||
+            (version <= 3 && e.type === "arc"),
         )
       : state.entities;
   const ids = new Set(remaining.map((e) => e.id));
@@ -109,7 +112,7 @@ export async function saveEditablePdf(bytes, state, pdf) {
   );
   doc.catalog.set(
     key,
-    doc.context.obj({ Version: 3, Source: original, State: editing }),
+    doc.context.obj({ Version: 4, Source: original, State: editing }),
   );
   pruneUnusedObjects(doc);
   return doc.save();

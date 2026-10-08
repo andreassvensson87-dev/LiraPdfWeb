@@ -36,7 +36,13 @@
       </details>
       <div class="filename" id="filename">Exempelritning.pdf</div>
       <button id="save" title="Spara PDF · Ctrl+S">Spara PDF</button
-      ><button class="primary" id="export">Exportera PDF</button>
+      ><button
+        class="primary"
+        id="export"
+        title="Skapar en PDF med inbakade markeringar"
+      >
+        Exportera visningskopia
+      </button>
     </header>
     <div class="tool-tabs" role="tablist" aria-label="Verktygskategorier">
       <button
@@ -141,6 +147,13 @@
     </nav>
     <div class="properties" aria-label="Verktygsegenskaper">
       <strong id="toolname">Markera</strong>
+      <label id="circleShapeControl" hidden
+        >Form
+        <select id="circleShape" aria-label="Cirkel eller ellips">
+          <option value="circle">Cirkel</option>
+          <option value="ellipse">Ellips</option>
+        </select>
+      </label>
       <div id="styleControls">
         <label
           >Färg<input
