@@ -92,3 +92,39 @@ test("mask exports on its own page while retaining original text", async () => {
   assert.ok(content.includes("1 1 1 rg"));
   assert.ok(content.includes("10 250 cm"));
 });
+
+test("flattened export includes imported polygon fill at the PDF page coordinates before its stroke", async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage([200, 300]);
+  const shape = {
+    ...entity,
+    type: "polyline",
+    closed: true,
+    points: [
+      { x: 20, y: 30 },
+      { x: 80, y: 30 },
+      { x: 50, y: 70 },
+    ],
+    fillColor: "#00ff00",
+  };
+  const viewer = {
+    getPage: async () => ({
+      rotate: 0,
+      getViewport: () => ({ convertToPdfPoint: (x, y) => [x, 300 - y] }),
+    }),
+  };
+  const exported = await PDFDocument.load(
+    await exportPdf(await doc.save(), [shape], {}, viewer),
+  );
+  const streams = exported.getPage(0).node.Contents();
+  const content = Array.from({ length: streams.size() }, (_, i) =>
+    new TextDecoder().decode(
+      decodePDFRawStream(
+        exported.context.lookup(streams.get(i), PDFRawStream),
+      ).decode(),
+    ),
+  ).join("\n");
+  assert.match(content, /0 1 0 rg/);
+  assert.match(content, /20 -270 m/);
+  assert.ok(content.indexOf("0 1 0 rg") < content.indexOf(" RG"));
+});

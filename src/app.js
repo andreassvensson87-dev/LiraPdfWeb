@@ -775,6 +775,15 @@ function drawEntity(e, preview = false, parent = $("overlay")) {
           g,
         );
     }
+    if (s.kind === "fillPath")
+      svg(
+        "polygon",
+        {
+          points: s.points.map((p) => `${p.x},${p.y}`).join(" "),
+          fill: s.color,
+        },
+        g,
+      );
     if (s.kind === "fill")
       svg(
         "rect",

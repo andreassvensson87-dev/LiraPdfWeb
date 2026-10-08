@@ -388,3 +388,159 @@ test("deleting an imported mark also removes its associated popup", async () => 
   );
   assert.equal(saved.getPage(0).node.Annots(), undefined);
 });
+
+test("Circle annotations import as editable circles and save as native circles with valid appearances", async () => {
+  const doc = await document();
+  add(doc, {
+    Subtype: "Circle",
+    NM: PDFString.of("circle"),
+    Rect: [20, 40, 100, 120],
+    RD: [2, 2, 2, 2],
+    IC: [],
+  });
+  const imported = await readEditablePdf(await doc.save());
+  const circle = imported.state.entities[0];
+  assert.equal(circle.type, "circle");
+  assert.deepEqual(circle.points, [
+    { x: 60, y: 220 },
+    { x: 98, y: 220 },
+  ]);
+  circle.points = circle.points.map((p) => ({ x: p.x + 15, y: p.y - 20 }));
+  const source = await PDFDocument.load(imported.bytes),
+    saved = await PDFDocument.load(
+      await saveEditablePdf(imported.bytes, imported.state, viewer(source)),
+    );
+  const a = annots(saved)[0];
+  assert.equal(a.lookup(k("Subtype")).toString(), "/Circle");
+  const appearance = new TextDecoder().decode(
+    decodePDFRawStream(a.lookup(k("AP"), PDFDict).lookup(k("N"))).decode(),
+  );
+  assert.equal((appearance.match(/ c\n/g) || []).length, 4);
+  const reopened = await readEditablePdf(await saved.save());
+  assert.deepEqual(reopened.state.entities[0].points, circle.points);
+});
+
+test("Polygon annotations with empty or solid interior colors remain editable and preserve fill through external changes", async () => {
+  const doc = await document();
+  add(doc, {
+    Subtype: "Polygon",
+    NM: PDFString.of("empty-fill"),
+    Vertices: [10, 20, 30, 40, 50, 20],
+    IC: [],
+  });
+  add(doc, {
+    Subtype: "Polygon",
+    NM: PDFString.of("solid-fill"),
+    Vertices: [60, 20, 80, 40, 100, 20],
+    IC: [0, 1, 0],
+    CA: 0.5,
+  });
+  const imported = await readEditablePdf(await doc.save());
+  assert.equal(imported.state.entities.length, 2);
+  assert.equal(imported.state.entities[0].fillColor, undefined);
+  assert.equal(imported.state.entities[0].closed, true);
+  assert.equal(imported.state.entities[1].fillColor, "#00ff00");
+  assert.equal(imported.state.entities[1].opacity, 0.5);
+  const source = await PDFDocument.load(imported.bytes),
+    saved = await PDFDocument.load(
+      await saveEditablePdf(imported.bytes, imported.state, viewer(source)),
+    );
+  const marks = annots(saved);
+  assert.equal(marks[0].has(k("IC")), false);
+  assert.deepEqual(
+    marks[1]
+      .lookup(k("IC"))
+      .asArray()
+      .map((n) => n.asNumber()),
+    [0, 1, 0],
+  );
+  const appearance = new TextDecoder().decode(
+    decodePDFRawStream(
+      marks[1].lookup(k("AP"), PDFDict).lookup(k("N")),
+    ).decode(),
+  );
+  assert.match(appearance, /0 1 0 rg/);
+  assert.match(appearance, /B Q/);
+  marks[1].set(k("IC"), saved.context.obj([]));
+  const reopened = await readEditablePdf(await saved.save());
+  assert.equal(reopened.state.entities[1].fillColor, undefined);
+});
+
+test("circle geometry round-trips with cropped, rotated and scaled pages", async () => {
+  for (const rotation of [0, 90, 180, 270]) {
+    const doc = await document(),
+      page = doc.getPage(0);
+    page.setCropBox(10, 20, 150, 220);
+    page.setRotation(degrees(rotation));
+    page.node.set(k("UserUnit"), PDFNumber.of(2));
+    const circle = {
+      ...entity("circle"),
+      points: [
+        { x: 100, y: 110 },
+        { x: 130, y: 150 },
+      ],
+      fillColor: "#ffee00",
+    };
+    const imported = await readEditablePdf(
+      await saveEditablePdf(
+        await doc.save(),
+        { entities: [circle], scales: {} },
+        viewer(doc),
+      ),
+    );
+    const result = imported.state.entities[0];
+    assert.equal(result.type, "circle");
+    assert.equal(result.fillColor, "#ffee00");
+    assert.deepEqual(result.points[0], circle.points[0]);
+    assert.ok(
+      Math.abs(
+        Math.hypot(
+          result.points[1].x - result.points[0].x,
+          result.points[1].y - result.points[0].y,
+        ) - 50,
+      ) < 1e-7,
+    );
+  }
+});
+
+test("v2 saved Lira circles migrate without disappearing or creating duplicate shapes", async () => {
+  const source = await document(),
+    bytes = await source.save(),
+    doc = await PDFDocument.load(bytes),
+    circle = entity("circle", "old-circle");
+  const state = { entities: [circle], scales: {} };
+  doc.catalog.set(
+    k("LiraPDF"),
+    doc.context.obj({
+      Version: 2,
+      Source: doc.context.register(doc.context.flateStream(bytes)),
+      State: doc.context.register(
+        doc.context.flateStream(JSON.stringify(state)),
+      ),
+    }),
+  );
+  const imported = await readEditablePdf(await doc.save());
+  assert.equal(imported.state.entities.length, 1);
+  assert.equal(imported.state.entities[0].id, "old-circle");
+  const saved = await PDFDocument.load(
+    await saveEditablePdf(imported.bytes, imported.state, viewer(source)),
+  );
+  assert.equal(annots(saved).length, 1);
+  assert.equal(annots(saved)[0].lookup(k("Subtype")).toString(), "/Circle");
+  assert.equal(
+    (await readEditablePdf(await saved.save())).state.entities.length,
+    1,
+  );
+});
+
+test("ovals and measured polygons remain unchanged instead of being distorted or losing measurement semantics", async () => {
+  const doc = await document();
+  add(doc, { Subtype: "Circle", Rect: [10, 20, 110, 70] });
+  add(doc, {
+    Subtype: "Polygon",
+    Vertices: [10, 20, 30, 40, 50, 20],
+    IC: [],
+    Measure: { Type: "Measure", Subtype: "RL" },
+  });
+  assert.equal(await readEditablePdf(await doc.save()), null);
+});

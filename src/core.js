@@ -52,6 +52,9 @@ export function primitives(e, scale) {
   const [a, b, c] = e.points,
     out = [];
   const line = (p, q) => out.push({ kind: "line", a: p, b: q });
+  const fill = (points) => {
+    if (e.fillColor) out.push({ kind: "fillPath", points, color: e.fillColor });
+  };
   const text = (p, value) =>
     out.push({ kind: "text", p, value, size: e.fontSize || 12 });
   const arrow = (p, q) => {
@@ -63,6 +66,7 @@ export function primitives(e, scale) {
   switch (e.type) {
     case "freehand":
     case "polyline":
+      if (e.closed) fill(e.points);
       e.points.slice(1).forEach((p, i) => line(e.points[i], p));
       if (e.closed) line(e.points.at(-1), e.points[0]);
       break;
@@ -77,6 +81,7 @@ export function primitives(e, scale) {
           { x: r.x + r.w, y: r.y + r.h },
           { x: r.x, y: r.y + r.h },
         ];
+      fill(ps);
       ps.forEach((p, i) => line(p, ps[(i + 1) % 4]));
       break;
     }
@@ -86,6 +91,7 @@ export function primitives(e, scale) {
           x: a.x + r * Math.cos((i * Math.PI) / 48),
           y: a.y + r * Math.sin((i * Math.PI) / 48),
         }));
+      fill(ps);
       ps.slice(1).forEach((p, i) => line(ps[i], p));
       break;
     }
@@ -184,6 +190,12 @@ export function validateProject(p) {
         : e.points.length !== counts[e.type]) ||
       e.points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y)) ||
       !/^#[0-9a-f]{6}$/i.test(e.color) ||
+      (e.fillColor !== undefined &&
+        (!/^#[0-9a-f]{6}$/i.test(e.fillColor) ||
+          !(
+            ["circle", "rect"].includes(e.type) ||
+            (e.type === "polyline" && e.closed)
+          ))) ||
       (e.opacity !== undefined &&
         (!Number.isFinite(e.opacity) || e.opacity < 0 || e.opacity > 1)) ||
       !Number.isFinite(e.width) ||

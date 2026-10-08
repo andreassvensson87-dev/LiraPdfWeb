@@ -54,18 +54,16 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
           top: bounds.y + bounds.height,
         });
         await embedded.embed();
-        doc.context
-          .lookup(embedded.ref)
-          .dict.set(
-            PDFName.of("Group"),
-            doc.context.obj({
-              Type: "Group",
-              S: "Transparency",
-              CS: "DeviceRGB",
-              I: true,
-              K: false,
-            }),
-          );
+        doc.context.lookup(embedded.ref).dict.set(
+          PDFName.of("Group"),
+          doc.context.obj({
+            Type: "Group",
+            S: "Transparency",
+            CS: "DeviceRGB",
+            I: true,
+            K: false,
+          }),
+        );
         page.drawPage(embedded, {
           x: bounds.x,
           y: bounds.y,
@@ -112,6 +110,14 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
             ...(e.type === "freehand" ? { lineCap: LineCapStyle.Round } : {}),
             color,
           });
+        if (shape.kind === "fillPath") {
+          const path =
+            shape.points
+              .map(pt)
+              .map((p, i) => `${i ? "L" : "M"} ${p.x} ${-p.y}`)
+              .join(" ") + " Z";
+          target.drawSvgPath(path, { color: parseColor(shape.color) });
+        }
         if (shape.kind === "fill") {
           const { x, y, w, h } = shape.rect;
           const points = [

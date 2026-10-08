@@ -26,7 +26,7 @@ export async function readEditablePdf(bytes) {
   if (doc.catalog.has(key)) {
     const data = doc.catalog.lookup(key, PDFDict);
     version = data.lookup(PDFName.of("Version"), PDFNumber).asNumber();
-    if (![1, 2].includes(version))
+    if (![1, 2, 3].includes(version))
       throw Error(
         "PDF:en innehåller redigeringsdata från en version av LiraPDF som inte stöds.",
       );
@@ -50,13 +50,16 @@ export async function readEditablePdf(bytes) {
   const imported = importAnnotations(
     doc,
     source,
-    version === 2 ? state.entities : [],
+    version >= 2 ? state.entities : [],
   );
   if (!version && !imported.entities.length) return null;
-  // In v2 standard annotations are authoritative, including deletion by another editor.
+  // Standard annotations are authoritative, including external deletions.
+  // Circles were flattened in v2, so keep their legacy state until saved as v3.
   const remaining =
-    version === 2
-      ? state.entities.filter((e) => !isStandardEntity(e))
+    version >= 2
+      ? state.entities.filter(
+          (e) => !isStandardEntity(e) || (version === 2 && e.type === "circle"),
+        )
       : state.entities;
   const ids = new Set(remaining.map((e) => e.id));
   for (const entity of imported.entities) {
@@ -64,7 +67,7 @@ export async function readEditablePdf(bytes) {
     ids.add(entity.id);
   }
   state.entities = [...remaining, ...imported.entities];
-  if (version === 2) {
+  if (version >= 2) {
     state.rotations = {};
     for (let i = 0; i < doc.getPageCount(); i++) {
       const angle =
@@ -106,7 +109,7 @@ export async function saveEditablePdf(bytes, state, pdf) {
   );
   doc.catalog.set(
     key,
-    doc.context.obj({ Version: 2, Source: original, State: editing }),
+    doc.context.obj({ Version: 3, Source: original, State: editing }),
   );
   pruneUnusedObjects(doc);
   return doc.save();

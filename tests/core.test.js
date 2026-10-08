@@ -84,3 +84,47 @@ test("project rejects invalid coordinates and duplicate identities", () => {
     }),
   );
 });
+
+test("filled polygons, circles and rectangles expose fill geometry before their outlines", () => {
+  for (const type of ["polyline", "circle", "rect"]) {
+    const entity = {
+      id: type,
+      type,
+      page: 1,
+      points:
+        type === "polyline"
+          ? [
+              { x: 0, y: 0 },
+              { x: 40, y: 0 },
+              { x: 20, y: 30 },
+            ]
+          : [
+              { x: 20, y: 20 },
+              { x: 40, y: 30 },
+            ],
+      closed: type === "polyline",
+      color: "#000000",
+      fillColor: "#00ff00",
+      width: 2,
+      fontSize: 12,
+    };
+    const shapes = primitives(entity, 1);
+    assert.equal(shapes[0].kind, "fillPath");
+    assert.equal(shapes[0].color, "#00ff00");
+    assert.equal(shapes[1].kind, "line");
+    const project = {
+      format: "lirapdf",
+      version: 1,
+      pdf: "embedded",
+      entities: [entity],
+      scales: {},
+    };
+    assert.equal(validateProject(project), project);
+    assert.throws(() =>
+      validateProject({
+        ...project,
+        entities: [{ ...entity, fillColor: "bad" }],
+      }),
+    );
+  }
+});

@@ -46,6 +46,10 @@ export function inSelection(e, a, b, scale = 1, textRects = []) {
   } else
     for (const s of primitives(e, scale)) {
       if (s.kind === "line") lines.push([s.a, s.b]);
+      if (s.kind === "fillPath") {
+        outline(s.points);
+        fills.push(s.points);
+      }
       if (s.kind === "fill") {
         const pts = corners(s.rect);
         outline(pts);

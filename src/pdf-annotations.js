@@ -90,6 +90,26 @@ export function annotationCoordinates(page) {
   };
 }
 
+function annotationColor(channels) {
+  let rgb;
+  if (channels.length === 1) rgb = [channels[0], channels[0], channels[0]];
+  else if (channels.length === 3) rgb = channels;
+  else if (channels.length === 4)
+    rgb = channels.slice(0, 3).map((v) => 1 - Math.min(1, v + channels[3]));
+  else return null;
+  if (rgb.some((v) => v < 0 || v > 1)) return null;
+  return (
+    "#" +
+    rgb
+      .map((v) =>
+        Math.round(v * 255)
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+  );
+}
+
 function parseAnnotation(annotation, page, pageNo, metadata, id) {
   const subtype = value(annotation, "Subtype")?.toString();
   const type = {
@@ -97,6 +117,7 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
     "/PolyLine": "polyline",
     "/Polygon": "polyline",
     "/Square": "rect",
+    "/Circle": "circle",
     "/Ink": "freehand",
   }[subtype];
   if (!type) return null;
@@ -104,8 +125,7 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
   // Preserve invisible, locked, measured and visually complex markups unchanged.
   if (
     flags & (1 | 2 | 8 | 16 | 32 | 64 | 128 | 512) ||
-    annotation.has(key("Measure")) ||
-    annotation.has(key("IC"))
+    annotation.has(key("Measure"))
   )
     return null;
   const ends = value(annotation, "LE");
@@ -139,7 +159,7 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
   let coordinates;
   if (type === "line") coordinates = numbers(value(annotation, "L"));
   if (type === "polyline") coordinates = numbers(value(annotation, "Vertices"));
-  if (type === "rect") {
+  if (["rect", "circle"].includes(type)) {
     const rect = numbers(value(annotation, "Rect")),
       inset = numbers(value(annotation, "RD")) || [0, 0, 0, 0];
     if (rect?.length === 4 && inset.length === 4)
@@ -161,7 +181,7 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
     coordinates.length % 2 ||
     coordinates.length < (subtype === "/Polygon" ? 6 : 4) ||
     coordinates.length > 20000 ||
-    (["line", "rect"].includes(type) && coordinates.length !== 4)
+    (["line", "rect", "circle"].includes(type) && coordinates.length !== 4)
   )
     return null;
   const mapping = annotationCoordinates(page);
@@ -179,37 +199,52 @@ function parseAnnotation(annotation, page, pageNo, metadata, id) {
   )
     return null;
   const channels = numbers(value(annotation, "C")) || [0, 0, 0];
-  let rgb;
-  if (channels.length === 1) rgb = [channels[0], channels[0], channels[0]];
-  else if (channels.length === 3) rgb = channels;
-  else if (channels.length === 4)
-    rgb = channels.slice(0, 3).map((v) => 1 - Math.min(1, v + channels[3]));
-  else return null;
-  if (rgb.some((v) => v < 0 || v > 1)) return null;
+  const color = annotationColor(channels);
+  if (!color) return null;
+  const interior = numbers(value(annotation, "IC"));
+  if (annotation.has(key("IC")) && !interior) return null;
+  let fillColor;
+  if (interior?.length) {
+    if (!["rect", "circle"].includes(type) && subtype !== "/Polygon")
+      return null;
+    fillColor = annotationColor(interior);
+    if (!fillColor) return null;
+  }
   const points = [];
   for (let i = 0; i < coordinates.length; i += 2)
     points.push(mapping.fromPdf(coordinates[i], coordinates[i + 1]));
-  return {
+  if (type === "circle") {
+    const [a, b] = points,
+      rx = Math.abs(b.x - a.x) / 2,
+      ry = Math.abs(b.y - a.y) / 2;
+    if (!rx || Math.abs(rx - ry) > Math.max(0.0001, rx * 0.000001)) return null;
+    const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const old = metadata?.points;
+    const angle =
+      old?.length === 2
+        ? Math.atan2(old[1].y - old[0].y, old[1].x - old[0].x)
+        : 0;
+    points.splice(0, 2, center, {
+      x: center.x + rx * Math.cos(angle),
+      y: center.y + rx * Math.sin(angle),
+    });
+  }
+  const entity = {
     ...(metadata || {}),
     id,
     page: pageNo,
     type,
     points,
-    color:
-      "#" +
-      rgb
-        .map((v) =>
-          Math.round(v * 255)
-            .toString(16)
-            .padStart(2, "0"),
-        )
-        .join(""),
+    color,
     width,
     fontSize: metadata?.fontSize || 12,
     opacity,
     ...(type === "polyline" ? { closed: subtype === "/Polygon" } : {}),
     pdfAnnotationId: id,
+    fillColor,
   };
+  if (!fillColor) delete entity.fillColor;
+  return entity;
 }
 
 // Supported marks become editor objects; other annotations remain on the PDF page.
@@ -269,7 +304,7 @@ export function importAnnotations(current, source, metadata = []) {
 }
 
 export const isStandardEntity = (entity) =>
-  ["line", "polyline", "rect", "freehand"].includes(entity.type);
+  ["line", "polyline", "rect", "circle", "freehand"].includes(entity.type);
 
 export async function writeAnnotations(doc, source, entities, pdf) {
   const originals = doc.catalog.lookupMaybe(archiveKey, PDFDict);
@@ -308,6 +343,16 @@ export async function writeAnnotations(doc, source, entities, pdf) {
           [a[0], b[1]],
         ];
       }
+      let circle;
+      if (entity.type === "circle") {
+        const [center, edge] = points,
+          radius = Math.hypot(edge[0] - center[0], edge[1] - center[1]);
+        circle = { center, radius };
+        points = [
+          [center[0] - radius, center[1] - radius],
+          [center[0] + radius, center[1] + radius],
+        ];
+      }
       const width = entity.width / unit,
         pad = Math.max(width / 2, 0.5);
       const xs = points.map((p) => p[0]),
@@ -325,6 +370,7 @@ export async function writeAnnotations(doc, source, entities, pdf) {
         line: "Line",
         polyline: entity.closed ? "Polygon" : "PolyLine",
         rect: "Square",
+        circle: "Circle",
         freehand: "Ink",
       }[entity.type];
       const put = (name, data) =>
@@ -335,6 +381,14 @@ export async function writeAnnotations(doc, source, entities, pdf) {
       put("Subtype", subtype);
       put("Rect", rect);
       put("C", color);
+      const fill = entity.fillColor
+        ? [1, 3, 5].map(
+            (index) =>
+              parseInt(entity.fillColor.slice(index, index + 2), 16) / 255,
+          )
+        : null;
+      if (fill) put("IC", fill);
+      else annotation.delete(key("IC"));
       put("CA", entity.opacity ?? 1);
       put("BS", { Type: "Border", S: "S", W: width });
       put("Border", [0, 0, width]);
@@ -351,17 +405,33 @@ export async function writeAnnotations(doc, source, entities, pdf) {
       if (entity.type === "line") put("L", points.flat());
       if (entity.type === "polyline") put("Vertices", points.flat());
       if (entity.type === "freehand") put("InkList", [points.flat()]);
-      if (entity.type === "rect") put("RD", [pad, pad, pad, pad]);
+      if (["rect", "circle"].includes(entity.type))
+        put("RD", [pad, pad, pad, pad]);
       const n = (v) => Number(v.toFixed(6));
-      const path = points
+      let path = points
         .map(
           (p, j) =>
             `${n(p[0] - rect[0])} ${n(p[1] - rect[1])} ${j ? "l" : "m"}`,
         )
         .join("\n");
+      if (circle) {
+        const x = circle.center[0] - rect[0],
+          y = circle.center[1] - rect[1],
+          r = circle.radius,
+          c = r * 0.5522847498307936;
+        const command = (values, op) => values.map(n).join(" ") + " " + op;
+        path = [
+          command([x + r, y], "m"),
+          command([x + r, y + c, x + c, y + r, x, y + r], "c"),
+          command([x - c, y + r, x - r, y + c, x - r, y], "c"),
+          command([x - r, y - c, x - c, y - r, x, y - r], "c"),
+          command([x + c, y - r, x + r, y - c, x + r, y], "c"),
+        ].join("\n");
+      }
       const closed =
-        entity.type === "rect" || (entity.type === "polyline" && entity.closed);
-      const appearance = `q /Opacity gs ${color.map(n).join(" ")} RG ${n(width)} w ${entity.type === "freehand" ? 1 : 0} J 1 j\n${path}\n${closed ? "h\n" : ""}S Q`;
+        ["rect", "circle"].includes(entity.type) ||
+        (entity.type === "polyline" && entity.closed);
+      const appearance = `q /Opacity gs ${color.map(n).join(" ")} RG ${fill ? fill.map(n).join(" ") + " rg" : ""} ${n(width)} w ${entity.type === "freehand" ? 1 : 0} J 1 j\n${path}\n${closed ? "h\n" : ""}${fill ? "B" : "S"} Q`;
       const stream = doc.context.flateStream(appearance, {
         Type: "XObject",
         Subtype: "Form",
