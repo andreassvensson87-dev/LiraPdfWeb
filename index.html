@@ -27,6 +27,7 @@
         <summary>Arkiv <span>⌄</span></summary>
         <div class="menu-panel">
           <button id="newPdf">Ny PDF…</button>
+          <button id="saveAs">Spara som PDF…</button>
           <button id="open">Öppna PDF…</button
           ><button id="projectOpen">Öppna projekt…</button>
           <hr />
@@ -34,8 +35,7 @@
         </div>
       </details>
       <div class="filename" id="filename">Exempelritning.pdf</div>
-      <button id="save" title="Spara redigerbart LiraPDF-projekt">
-        Spara projekt</button
+      <button id="save" title="Spara PDF · Ctrl+S">Spara PDF</button
       ><button class="primary" id="export">Exportera PDF</button>
     </header>
     <div class="tool-tabs" role="tablist" aria-label="Verktygskategorier">
@@ -447,7 +447,7 @@
           >Spara ändringar innan du stänger?</strong
         >
         <p id="closeDocumentName"></p>
-        <p>Spara en projektfil för att behålla dina ändringar.</p>
+        <p>Spara PDF:en för att behålla dina ändringar.</p>
         <div class="dialogactions">
           <button value="cancel" autofocus>Avbryt</button>
           <button value="discard">Stäng utan att spara</button>

@@ -17,7 +17,7 @@ Webbappen registrerar `.pdf` med File Handling API när den installeras via Micr
 3. I Windows: **Inställningar → Appar → Standardappar**, sök efter **.pdf** och välj **LiraPDF**. Alternativt högerklicka på en PDF och välj **Öppna med → Välj en annan app → LiraPDF**, sedan alternativet att alltid använda appen.
 4. Dubbelklicka på en PDF i Utforskaren för att öppna den i LiraPDF.
 
-En vanlig webbläsarflik registreras inte som standardprogram. En befintlig installation kan behöva uppdateras eller installeras om för att få den nya filkopplingen. Den publicerade versionen kan användas offline efter att appens resurser har sparats. Om du installerar från localhost måste den lokala servern vara tillgänglig tills resurserna har sparats för offlinebruk. Webbläsare utan File Handling API använder fortsatt **Arkiv → Öppna PDF**. Windows väljer standardprogrammet först när du själv anger det i systeminställningarna. Dokument och snabbverktyg från en annan webbläsare eller webbadress överförs via sparade projektfiler respektive ställs in på nytt.
+En vanlig webbläsarflik registreras inte som standardprogram. En befintlig installation kan behöva uppdateras eller installeras om för att få den nya filkopplingen. Den publicerade versionen kan användas offline efter att appens resurser har sparats. Om du installerar från localhost måste den lokala servern vara tillgänglig tills resurserna har sparats för offlinebruk. Webbläsare utan File Handling API använder fortsatt **Arkiv → Öppna PDF**. Windows väljer standardprogrammet först när du själv anger det i systeminställningarna. Dokument och snabbverktyg från en annan webbläsare eller webbadress överförs via sparade PDF-filer respektive ställs in på nytt.
 
 ## Genomskinlighet
 
@@ -25,13 +25,13 @@ En vanlig webbläsarflik registreras inte som standardprogram. En befintlig inst
 
 ## Frihand och egna snabbverktyg
 
-Välj **Rita → Frihand** eller skriv `FH`. Håll ned musknappen eller pennan och dra för att markera granskade delar av PDF:en. Frihand följer pekaren utan snappning, POLAR eller ORTHO. Pennbredden anges i px vid 100 % zoom och följer dokumentet vid zoomning. Varje drag är ett objekt som kan markeras, flyttas, raderas och ångras. Strecken autosparas, ingår i projektfiler och exporteras som vektorer med runda ändar.
+Välj **Rita → Frihand** eller skriv `FH`. Håll ned musknappen eller pennan och dra för att markera granskade delar av PDF:en. Frihand följer pekaren utan snappning, POLAR eller ORTHO. Pennbredden anges i px vid 100 % zoom och följer dokumentet vid zoomning. Varje drag är ett objekt som kan markeras, flyttas, raderas och ångras. Strecken autosparas, ingår i sparade PDF-filer och exporteras som vektorer med runda ändar.
 
-**Snabbverktyg** är en egen vertikal sektion under verktygsfältet. Varje knapp visar verktygets ikon i den sparade färgen; namn och bredd visas vid hovring. **Granskat · Frihand · 5 px** är en färdig grön penna. Klicka **+** i snabbsektionen för att spara egna namn, verktyg, färger och bredder. Klicka på ett sparat verktyg i dialogen för att ändra det, eller välj **Nytt** för att skapa fler. Snabbverktygen sparas lokalt i webbläsaren och gäller för alla dokument; de följer inte med projektfilen.
+**Snabbverktyg** är en egen vertikal sektion under verktygsfältet. Varje knapp visar verktygets ikon i den sparade färgen; namn och bredd visas vid hovring. **Granskat · Frihand · 5 px** är en färdig grön penna. Klicka **+** i snabbsektionen för att spara egna namn, verktyg, färger och bredder. Klicka på ett sparat verktyg i dialogen för att ändra det, eller välj **Nytt** för att skapa fler. Snabbverktygen sparas lokalt i webbläsaren och gäller för alla dokument; de följer inte med PDF-filen.
 
 ## Arbetsyta
 
-Ritningen fyller arbetsytan. Verktygsegenskaper visas i raden ovanför ritningen och anpassas efter valt verktyg eller objekt. Markeringslistan är borttagen; välj och redigera objekt direkt i ritningen. Kompakta dokumentflikar ligger ovanför ritningen. Varje flik har ett kryss för att stänga dokumentet. Vid ändringar kan du spara en projektfil, stänga utan att spara eller avbryta. När den aktiva fliken stängs visas närmaste kvarvarande dokument; sista fliken lämnar en tom arbetsyta. Rulla horisontellt med mushjul/styrplatta; håll pekaren över en flik för fullständigt filnamn. Knappen med dokumentantal öppnar en sökbar lista. Sök med flera ord, välj med pil upp/ned och Enter. Flikraden kan navigeras med vänster/höger samt Home/End. Dra en flik och släpp före eller efter en annan för att ändra ordningen; markeringen visar placeringen. Dra mot flikradens kant för att skrolla bland många dokument. Ctrl + Shift + vänster/höger flyttar den fokuserade fliken med tangentbordet. Ordningen autosparas och återställs när appen startas om. Öppna flera PDF:er samtidigt via Arkiv. Varje dokument har egen sidposition, markeringar, skala och ångrahistorik. Sidorna visas i ett sammanhängande flöde. Skrolla för att läsa dokumentet eller använd pilarna och sidnummerfältet i den flytande rutan centrerad längst ned; sidnumret visas även i statusraden. Flikraden kan döljas utan att sidnavigationen försvinner. PDF- och projektöppning finns under **Arkiv**.
+Ritningen fyller arbetsytan. Verktygsegenskaper visas i raden ovanför ritningen och anpassas efter valt verktyg eller objekt. Markeringslistan är borttagen; välj och redigera objekt direkt i ritningen. Kompakta dokumentflikar ligger ovanför ritningen. Varje flik har ett kryss för att stänga dokumentet. En PDF som bara har lästs stängs direkt. En `*` framför fliknamnet visar osparade ändringar; då visas sparfrågan när fliken stängs. Stjärnan försvinner efter Spara PDF eller när alla ändringar ångras tillbaka till det sparade läget. Zoom, skroll, sidbyte och ändrad flikordning räknas inte som dokumentändringar. Vid ändringar kan du spara PDF:en, stänga utan att spara eller avbryta. När den aktiva fliken stängs visas närmaste kvarvarande dokument; sista fliken lämnar en tom arbetsyta. Rulla horisontellt med mushjul/styrplatta; håll pekaren över en flik för fullständigt filnamn. Knappen med dokumentantal öppnar en sökbar lista. Sök med flera ord, välj med pil upp/ned och Enter. Flikraden kan navigeras med vänster/höger samt Home/End. Dra en flik och släpp före eller efter en annan för att ändra ordningen; markeringen visar placeringen. Dra mot flikradens kant för att skrolla bland många dokument. Ctrl + Shift + vänster/höger flyttar den fokuserade fliken med tangentbordet. Ordningen autosparas och återställs när appen startas om. Öppna flera PDF:er samtidigt via Arkiv. Varje dokument har egen sidposition, markeringar, skala och ångrahistorik. Sidorna visas i ett sammanhängande flöde. Skrolla för att läsa dokumentet eller använd pilarna och sidnummerfältet i den flytande rutan centrerad längst ned; sidnumret visas även i statusraden. Flikraden kan döljas utan att sidnavigationen försvinner. PDF- och projektöppning finns under **Arkiv**.
 
 Skrollister visas alltid längs ritytans högerkant och underkant. Högerlisten visar positionen i hela dokumentet; den nedre visar positionen i sidled. Dra ett handtag eller klicka i listen för att snabbt flytta vyn. Listerna följer zoom, sidrotation och fönsterstorlek. När hela dokumentet ryms i en riktning visas dess handtag i grått. Med en fokuserad skrollist kan du använda piltangenter, Page Up/Down och Home/End. Sidrutan ligger kvar centrerad ovanför den nedre listen.
 
@@ -64,7 +64,7 @@ Markera, ångra/gör om och zoom är alltid tillgängliga. Kommandon öppnar rä
 
 ## Visuell maskning
 
-Välj **Maska** eller skriv `MASK` följt av Enter/mellanslag. Dra en rektangel över området. Masken är vit, går att flytta och ändra med grips samt ångra/göra om. Markera masken för att ändra färg. Den följer med i projektfil och PDF-export. **Originalinnehållet finns kvar under täckningen. Maskning är inte säker borttagning av text eller andra uppgifter.**
+Välj **Maska** eller skriv `MASK` följt av Enter/mellanslag. Dra en rektangel över området. Masken är vit, går att flytta och ändra med grips samt ångra/göra om. Markera masken för att ändra färg. Den följer med i sparad PDF och PDF-export. **Originalinnehållet finns kvar under täckningen. Maskning är inte säker borttagning av text eller andra uppgifter.**
 
 ## Täck och ersätt PDF-text
 
@@ -76,10 +76,13 @@ Verklig redigering av originaltext är ännu inte implementerad. Nästa tekniska
 
 ## Spara
 
-- **Spara projekt** laddar ned en `.lirapdf`-fil med original-PDF, markeringar och skala per sida.
-- **Öppna projekt** återställer dessa objekt för fortsatt redigering.
-- **Exportera PDF** bakar in markeringarna som sidinnehåll. Spara också projektfilen om du vill kunna ändra objekten senare.
-- IndexedDB autosparar öppna dokument och aktiv flik. Öppning lägger till en flik. Spara projektfiler för separata säkerhetskopior.
+- **Spara PDF / Ctrl+S** sparar till den öppnade PDF-filen när appen har tillgång till dess filreferens. Annars väljer du plats vid första sparandet. Webbläsaren kan be om skrivrättighet.
+- **Spara som PDF… / Ctrl+Shift+S** väljer en annan fil och använder därefter den för Ctrl+S.
+- Den sparade PDF:en visar markeringarna i vanliga PDF-läsare och innehåller originalet samt Liras redigeringsdata. Öppna den i LiraPDF för att fortsätta ändra objekt, grupper, skala och sidrotation. Originalet som bäddas in kan göra filen större. Markeringarna är inte standardiserade PDF-annoteringar för redigering i andra program.
+- **Öppna projekt** importerar fortfarande äldre `.lirapdf`-filer. Därefter sparar du dem som PDF.
+- **Exportera PDF** skapar en visningskopia med inbakade markeringar utan Liras redigeringsdata. Använd **Spara PDF** för fortsatt redigering.
+- Webbläsare utan filåtkomst laddar ned PDF:en vid sparande. Direkt överskrivning kräver stöd för File System Access API.
+- IndexedDB autosparar öppna dokument, filreferenser och aktiv flik. Öppning lägger till en flik. Efter omstart kan webbläsaren be om skrivrättighet igen. Spara PDF-filer för separata säkerhetskopior.
 - Ångrahistorik gäller aktuell session och innehåller högst 80 ändringar.
 
 ## Begränsningar
@@ -111,7 +114,7 @@ Biblioteket sparas i IndexedDB i den här webbläsaren, separat från öppna dok
 - Dra blocket för att flytta det. Dra det motsatta hörngreppet för att skala proportionellt.
 - Ange storlek i procent (100 % är PDF-sidans storlek) och rotation i grader i egenskapsraden.
 - **Kopiera block** låter dig placera en ny kopia. Esc avbryter placeringen.
-- Ångra/gör om, sidbyte, autosparande och projektfiler inkluderar blocken.
+- Ångra/gör om, sidbyte, autosparande och sparade PDF-filer inkluderar blocken.
 - Export bäddar in vald sidas PDF-innehåll med bevarade vektorer. En rasterbild används endast för förhandsvisning i arbetsytan.
 - Blocket omfattar sidans beskärningsruta. Skapa små PDF-sidor för täta stämplar. Separata PDF-kommentarer och formulärfält behöver vara inbakade i käll-PDF:en först.
 
@@ -136,7 +139,7 @@ Verktygens steg visas i kommandoraden och korta verktygsförklaringar i egenskap
 
 ## GitHub Pages
 
-GitHub Actions installerar låsta beroenden, kör tester och bygger appen vid push till `main`. Ett godkänt bygge publiceras via GitHub Pages. Ritningar och blockbibliotek lagras i besökarens webbläsare, inte i GitHub-projektet. Bibliotek och autosparade dokument från localhost flyttas inte automatiskt till den publicerade adressen; använd projektfiler för att överföra dokument.
+GitHub Actions installerar låsta beroenden, kör tester och bygger appen vid push till `main`. Ett godkänt bygge publiceras via GitHub Pages. Ritningar och blockbibliotek lagras i besökarens webbläsare, inte i GitHub-projektet. Bibliotek och autosparade dokument från localhost flyttas inte automatiskt till den publicerade adressen; använd sparade PDF-filer för att överföra dokument.
 
 ## Viewporter med egen skala
 
@@ -146,7 +149,7 @@ En linje på `5000` mm blir 50 mm på pappret vid 1:100. Markera ramens kant och
 
 Skalbyte sker kring ramens övre vänstra hörn; både ramen och dess objekt ändrar storlek. Flytt av hela ramen flyttar även dess objekt; hörngreppen ändrar själva rutans utsträckning. Linjebredder och textstorlekar behåller sin pappersstorlek. Ramens streckade kant är arbetsstöd och skrivs inte ut. Markera ramen för att ange namn och välja **Visa namn och skala på PDF**. Texten placeras under ramen och följer med i exporten. Nya viewports visar texten som standard; befintliga kan aktiveras med kryssrutan. PDF-underlag, maskningar och direktredigering av PDF-innehållet följer pappret. Ta bort en viewport tar även bort dess objekt; Ångra återställer allt.
 
-Viewportskala, objekt och tillhörighet sparas i projektfilen och i autosparandet. Exporterade mått använder samma skala som visningen.
+Viewportskala, objekt och tillhörighet sparas i PDF-filen och i autosparandet. Exporterade mått använder samma skala som visningen.
 
 ## Ny PDF
 

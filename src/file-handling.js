@@ -23,7 +23,7 @@ export function setupFileHandling({
             const bytes = new Uint8Array(await file.arrayBuffer());
             if (!canOpen()) waiting();
             while (!canOpen()) await wait();
-            await open(bytes, file.name);
+            await open(bytes, file.name, handle);
           } catch (e) {
             error(e);
           }

@@ -112,6 +112,14 @@ import { blockLibrary } from "./block-library.js";
 import { blockPage, blockCorners } from "./pdf-block.js";
 let pendingBlock = null;
 import { documentTabs, reorderDocuments } from "./document-tabs.js";
+import { documentChanged, documentSnapshot } from "./document-state.js";
+import { readEditablePdf, saveEditablePdf } from "./editable-pdf.js";
+import {
+  choosePdfTarget,
+  writePdfFile,
+  pdfFilename,
+  persistableFileHandle,
+} from "./pdf-file-save.js";
 import {
   extractSegments,
   nearestSnap,
@@ -348,12 +356,13 @@ function autosave() {
           state: clone(d.state),
           pageNo: d.pageNo,
           savedState: d.savedState,
+          fileHandle: persistableFileHandle(d.fileHandle),
         })),
       });
       $("saveStatus").textContent = "Sparat i webbläsaren";
     } catch (e) {
       $("saveStatus").textContent = "Autosparande misslyckades";
-      toast("Kunde inte autospara. Spara en projektfil.");
+      toast("Kunde inte autospara. Spara PDF:en.");
     }
   }, 350);
 }
@@ -367,6 +376,7 @@ function commit(next) {
   if (undoStack.length > 80) undoStack.shift();
   redoStack = [];
   state = next;
+  documentTabsUI.updateChanges();
   refresh();
   autosave();
   if (redraw) showPage(pageNo, true);
@@ -383,6 +393,7 @@ function history(redo = false) {
   clearTracking();
   to.push(clone(state));
   state = from.pop();
+  documentTabsUI.updateChanges();
   editOperation = null;
   tool = "select";
   if (before !== removalKey(state)) showPage(pageNo, true);
@@ -1349,6 +1360,15 @@ function stashDocument() {
 const documentTabsUI = documentTabs({
   getDocuments: () => documents,
   getActiveId: () => activeId,
+  isChanged: (d) =>
+    documentChanged(
+      d.id === activeId
+        ? drag?.kind === "entity"
+          ? drag.before
+          : state
+        : d.state,
+      d.savedState,
+    ),
   activate: activateDocument,
   close: (id) => closeDocument(id).catch(error),
   reorder: (id, targetId, after) => {
@@ -1386,11 +1406,18 @@ async function activateDocument(id) {
   renderDocuments();
   await showPage(targetPage);
 }
-async function openDocument(data, filename, project = null) {
+async function openDocument(data, filename, project = null, fileHandle = null) {
   if (busy || pendingDialog) return;
   busy = true;
   $("saveStatus").textContent = "Öppnar …";
   try {
+    if (!project) {
+      const editable = await readEditablePdf(data);
+      if (editable) {
+        data = editable.bytes;
+        project = editable.state;
+      }
+    }
     const instance = await loadPdf(data);
     if (project?.entities.some((e) => e.page > instance.numPages)) {
       await instance.destroy();
@@ -1401,6 +1428,7 @@ async function openDocument(data, filename, project = null) {
       pdf: instance,
       bytes: data.slice(),
       name: filename,
+      fileHandle,
       state: project
         ? {
             entities: clone(project.entities),
@@ -1412,7 +1440,7 @@ async function openDocument(data, filename, project = null) {
       redoStack: [],
       pageNo: 1,
     };
-    d.savedState = JSON.stringify(d.state);
+    d.savedState = documentSnapshot(d.state);
     documents.push(d);
     busy = false;
     await activateDocument(d.id);
@@ -1420,20 +1448,52 @@ async function openDocument(data, filename, project = null) {
     busy = false;
   }
 }
-function saveDocument(d) {
-  download(
-    JSON.stringify({
-      format: "lirapdf",
-      version: 1,
-      name: d.name,
-      pdf: base64(d.bytes),
-      ...clone(d.state),
-    }),
-    "application/json",
-    d.name.replace(/\.pdf$/i, "") + ".lirapdf",
-  );
-  d.savedState = JSON.stringify(d.state);
-  autosave();
+async function saveDocument(d, saveAs = false) {
+  if (
+    busy ||
+    pendingDialog ||
+    drag ||
+    points.length ||
+    editOperation ||
+    activeGrip
+  ) {
+    toast("Avsluta eller avbryt pågående kommando före sparande.");
+    return false;
+  }
+  busy = true;
+  $("save").disabled = $("saveAs").disabled = true;
+  const snapshot = clone(d.state);
+  try {
+    // Request file access while this save still has the user's activation.
+    const handle = await choosePdfTarget(d.fileHandle, d.name, saveAs);
+    $("saveStatus").textContent = "Sparar PDF …";
+    const result = await saveEditablePdf(d.bytes, snapshot, d.pdf);
+    if (handle) await writePdfFile(handle, result);
+    else download(result, "application/pdf", pdfFilename(d.name));
+    d.fileHandle = handle;
+    d.name = handle?.name || pdfFilename(d.name);
+    if (d.id === activeId) {
+      name = d.name;
+      $("filename").textContent = name;
+    }
+    d.savedState = documentSnapshot(snapshot);
+    renderDocuments();
+    autosave();
+    toast(
+      handle
+        ? "PDF sparad."
+        : "PDF hämtad. Den innehåller dina redigerbara markeringar.",
+    );
+    return true;
+  } catch (e) {
+    if (e.name !== "AbortError") error(e);
+    $("saveStatus").textContent =
+      e.name === "AbortError" ? "Sparande avbrutet" : "Sparande misslyckades";
+    return false;
+  } finally {
+    busy = false;
+    $("save").disabled = $("saveAs").disabled = false;
+  }
 }
 function emptyWorkspace() {
   documentScroll.clear();
@@ -1477,7 +1537,7 @@ async function closeDocument(id) {
   const index = documents.findIndex((d) => d.id === id);
   if (index < 0) return;
   const d = documents[index];
-  if (JSON.stringify(d.state) !== d.savedState) {
+  if (documentChanged(d.state, d.savedState)) {
     $("closeDocumentName").textContent = d.name;
     const dialog = $("closeDocumentDialog");
     dialog.returnValue = "cancel";
@@ -1488,7 +1548,7 @@ async function closeDocument(id) {
       dialog.showModal();
     });
     if (choice !== "save" && choice !== "discard") return;
-    if (choice === "save") saveDocument(d);
+    if (choice === "save" && !(await saveDocument(d))) return;
   }
   documents.splice(index, 1);
   if (activeId === id) {
@@ -1501,7 +1561,7 @@ async function closeDocument(id) {
   autosave();
   await d.pdf.destroy();
 }
-$("emptyOpen").onclick = () => $("pdfInput").click();
+$("emptyOpen").onclick = () => $("open").click();
 function pdfLineAt(point) {
   const covered = pageEntities().some((e) => {
     if (!["mask", "replace"].includes(e.type) || (e.opacity ?? 1) < 1)
@@ -2633,7 +2693,35 @@ $("copyBlock").onclick = () => {
   delete pendingBlock.groupId;
   setTool("block");
 };
-$("open").onclick = () => $("pdfInput").click();
+$("open").onclick = async () => {
+  if (busy || pendingDialog) return;
+  if (!window.showOpenFilePicker) {
+    $("pdfInput").click();
+    return;
+  }
+  try {
+    const handles = await window.showOpenFilePicker({
+      multiple: true,
+      types: [
+        {
+          description: "PDF-dokument",
+          accept: { "application/pdf": [".pdf"] },
+        },
+      ],
+    });
+    for (const handle of handles) {
+      const file = await handle.getFile();
+      await openDocument(
+        new Uint8Array(await file.arrayBuffer()),
+        file.name,
+        null,
+        handle,
+      );
+    }
+  } catch (e) {
+    if (e.name !== "AbortError") error(e);
+  }
+};
 $("projectOpen").onclick = () => $("projectInput").click();
 $("pdfInput").onchange = async (ev) => {
   for (const file of ev.target.files)
@@ -2664,6 +2752,11 @@ $("save").onclick = () => {
   const d = documents.find((d) => d.id === activeId);
   if (d) saveDocument(d);
 };
+$("saveAs").onclick = () => {
+  stashDocument();
+  const d = documents.find((d) => d.id === activeId);
+  if (d) saveDocument(d, true);
+};
 $("export").onclick = async () => {
   if (!pdf || busy) return;
   $("export").disabled = true;
@@ -2682,7 +2775,7 @@ $("export").onclick = async () => {
       exportName.replace(/\.pdf$/i, "") + "-markerad.pdf",
     );
     toast(
-      "PDF exporterad med inbakade markeringar. Spara projektet för fortsatt redigering.",
+      "Visningskopia exporterad. Använd Spara PDF för att behålla redigerbara markeringar.",
     );
   } catch (e) {
     error(e);
@@ -3219,6 +3312,12 @@ $("command").addEventListener("keydown", (ev) => {
   ev.target.blur();
 });
 window.addEventListener("keydown", (ev) => {
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s") {
+    ev.preventDefault();
+    if (!document.querySelector("dialog[open]"))
+      $(ev.shiftKey ? "saveAs" : "save").click();
+    return;
+  }
   if (document.querySelector(".quick-tools-dialog[open]")) return;
   if (
     $("documentPicker").open ||
@@ -3309,10 +3408,10 @@ async function start() {
       restoring = true;
       let wanted = null;
       for (const d of saved.documents) {
-        await openDocument(d.bytes, d.name, d.state);
+        await openDocument(d.bytes, d.name, d.state, d.fileHandle || null);
         const opened = documents.at(-1);
         opened.savedState =
-          d.savedState ?? JSON.stringify({ entities: [], scales: {} });
+          d.savedState ?? documentSnapshot({ entities: [], scales: {} });
         opened.pageNo = Math.max(
           1,
           Math.min(opened.pdf.numPages, d.pageNo || 1),
@@ -3342,7 +3441,7 @@ setupFileHandling({
     !points.length &&
     !editOperation &&
     !activeGrip,
-  open: openDocument,
+  open: (data, name, handle) => openDocument(data, name, null, handle),
   error,
   waiting: () =>
     toast(
@@ -3422,6 +3521,7 @@ setupPWA(async () => {
       state: clone(d.state),
       pageNo: d.pageNo,
       savedState: d.savedState,
+      fileHandle: persistableFileHandle(d.fileHandle),
     })),
   });
 });

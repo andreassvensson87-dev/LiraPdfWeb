@@ -21,6 +21,7 @@ export function reorderDocuments(documents, id, targetId, after = false) {
 export function documentTabs({
   getDocuments,
   getActiveId,
+  isChanged = () => false,
   activate,
   close,
   reorder,
@@ -30,6 +31,24 @@ export function documentTabs({
     search = document.getElementById("documentSearch"),
     results = document.getElementById("documentResults");
   let matches = [];
+  const tabButtons = new Map();
+  function updateChanges() {
+    for (const d of getDocuments()) {
+      const button = tabButtons.get(d.id);
+      if (!button) continue;
+      const changed = isChanged(d);
+      button.textContent =
+        (changed ? "* " : "") + d.name.replace(/\.pdf$/i, "");
+      button.title =
+        d.name +
+        (changed ? "\nOsparade ändringar" : "") +
+        (reorder ? "\nDra för att ändra flikordning" : "");
+      button.setAttribute(
+        "aria-label",
+        d.name + (changed ? ", osparade ändringar" : ""),
+      );
+    }
+  }
   let draggedId = null,
     scrollFrame = 0,
     pointerX = 0,
@@ -218,19 +237,19 @@ export function documentTabs({
     buttons[next]?.click();
   });
   return {
+    updateChanges,
     render({ revealActive = true } = {}) {
       finishDrag();
       const keepFocus = tabs.contains(document.activeElement);
       const scrollLeft = tabs.scrollLeft;
       const docs = getDocuments();
       tabs.replaceChildren();
+      tabButtons.clear();
       for (const d of docs) {
         const b = document.createElement("button");
         b.className =
           "document-button" + (d.id === getActiveId() ? " active" : "");
-        b.textContent = d.name.replace(/\.pdf$/i, "");
-        b.title = d.name + (reorder ? "\nDra för att ändra flikordning" : "");
-        b.setAttribute("aria-label", d.name);
+        tabButtons.set(d.id, b);
         b.setAttribute("role", "tab");
         b.setAttribute("aria-selected", String(d.id === getActiveId()));
         b.tabIndex = d.id === getActiveId() ? 0 : -1;
@@ -253,6 +272,7 @@ export function documentTabs({
         item.append(b, x);
         tabs.append(item);
       }
+      updateChanges();
       tabs.scrollLeft = scrollLeft;
       const active = tabs.querySelector(".active");
       if (active) {

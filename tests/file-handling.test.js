@@ -48,6 +48,19 @@ test("browsers without file handling keep working", () => {
   assert.equal(setupFileHandling({ launchQueue: undefined }), false);
 });
 
+test("OS launches retain the original file handle for saving back to the same PDF", async () => {
+  const source = handle("Test.pdf");
+  let received;
+  const h = harness({
+    open: async (_, name, fileHandle) => {
+      received = { name, fileHandle };
+    },
+  });
+  await h.launch([source]);
+  assert.equal(received.fileHandle, source);
+  assert.equal(received.name, "Test.pdf");
+});
+
 test("launch waits for restoration and serializes multiple launch events", async () => {
   let restored;
   const ready = new Promise((resolve) => {
