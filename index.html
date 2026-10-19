@@ -7,9 +7,8 @@
     <link rel="icon" href="./lira-icon.svg" type="image/svg+xml" />
     <link rel="icon" href="./favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-    <link rel="stylesheet" href="./src/lira-shell.css" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <meta name="theme-color" content="#192f35" />
+    <meta name="theme-color" content="#f3f5f6" />
   </head>
   <body data-lira-app="pdf">
     <header>
@@ -52,7 +51,7 @@
         aria-selected="true"
         aria-controls="toolRibbon"
       >
-        Skapa</button
+        Rita</button
       ><button
         id="editTab"
         role="tab"
@@ -60,15 +59,7 @@
         aria-selected="false"
         aria-controls="toolRibbon"
       >
-        Redigera</button
-      ><button
-        id="pdfTab"
-        role="tab"
-        data-category="pdf"
-        aria-selected="false"
-        aria-controls="toolRibbon"
-      >
-        PDF</button
+        Ändra</button
       ><button
         id="measureTab"
         role="tab"
@@ -76,7 +67,25 @@
         aria-selected="false"
         aria-controls="toolRibbon"
       >
-        Mått
+        Mät
+      </button>
+      <button
+        id="pdfTab"
+        role="tab"
+        data-category="pdf"
+        aria-selected="false"
+        aria-controls="toolRibbon"
+      >
+        PDF
+      </button>
+      <button
+        id="viewTab"
+        role="tab"
+        data-category="view"
+        aria-selected="false"
+        aria-controls="toolRibbon"
+      >
+        Visa
       </button>
     </div>
     <nav
@@ -353,14 +362,13 @@
             placeholder="Skriv ett kommando…"
             autocomplete="off"
           />
-          <strong id="prompt">Välj verktyg eller skriv ett kommando</strong
-          ><kbd>ESC</kbd>
+          <strong id="prompt" hidden>Välj verktyg eller skriv ett kommando</strong>
         </div>
       </section>
     </main>
     <footer>
       <span id="saveStatus">Redo</span>
-      <span id="pageLabel">Sida 1</span><span id="coords">X 0 · Y 0</span>
+      <span id="pageLabel">Sida 1</span>
       <div class="footer-actions">
         <button id="ortho">ORTHO AV · F8</button
         ><button id="snap" class="active">SNAPP PÅ</button>

@@ -20,7 +20,6 @@ function icon(tool) {
   svg.innerHTML = icons[tool];
   return svg;
 }
-const key = "lirapdf-quick-tools-v1";
 export function setupQuickTools({
   host,
   tools,
@@ -28,6 +27,7 @@ export function setupQuickTools({
   canUse,
   activate,
   error,
+  store,
 }) {
   const labels = new Map(tools.map(([id, , label]) => [id, label]));
   const valid = (p) =>
@@ -56,7 +56,7 @@ export function setupQuickTools({
     },
   ];
   try {
-    const saved = JSON.parse(localStorage.getItem(key));
+    const saved = store.read();
     if (Array.isArray(saved)) presets = saved.filter(valid).slice(0, 50);
   } catch {
     /* Keep the default when storage is unavailable. */
@@ -103,7 +103,7 @@ export function setupQuickTools({
     `${labels.get(p.tool)} · ${p.width} ${p.tool === "freehand" ? "px" : "pt"}${(p.opacity ?? 1) < 1 ? ` · ${Math.round((1 - p.opacity) * 100)} % genomskinlig` : ""}`;
   function persist(next) {
     try {
-      localStorage.setItem(key, JSON.stringify(next));
+      store.write(next);
     } catch {
       error(Error("Snabbverktygen kunde inte sparas i webbläsaren."));
       return false;
@@ -210,12 +210,12 @@ export function setupQuickTools({
   }
   const rail = host.querySelector(".lira-rail");
   const position = () => {
-    const top = rail.offsetTop + rail.offsetHeight + 10;
+    const top = rail ? rail.offsetTop + rail.offsetHeight + 10 : 16;
     bar.style.top = `${top}px`;
     bar.style.maxHeight = `${Math.max(42, host.clientHeight - top - 90)}px`;
   };
   const observer = new ResizeObserver(position);
-  observer.observe(rail);
+  if (rail) observer.observe(rail);
   observer.observe(host);
   render();
   position();

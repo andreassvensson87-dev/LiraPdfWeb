@@ -1,4 +1,4 @@
-import { box } from "./core.js";
+import { box } from "./model/geometry.js";
 export const mmPerPoint = 25.4 / 72;
 export function viewportAt(entities, page, p) {
   if (!p) return null;
@@ -10,6 +10,12 @@ export function viewportAt(entities, page, p) {
         return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
       })
       .sort((a, b) => {
+        const orderedA = Number.isInteger(a.pdfViewportOrder),
+          orderedB = Number.isInteger(b.pdfViewportOrder);
+        // PDF chooses the last containing viewport. New local regions sit above
+        // imported ones; local-only overlaps keep the existing smallest-area rule.
+        if (orderedA !== orderedB) return orderedA ? 1 : -1;
+        if (orderedA) return b.pdfViewportOrder - a.pdfViewportOrder;
         const x = box(...a.points),
           y = box(...b.points);
         return x.w * x.h - y.w * y.h;
@@ -17,6 +23,12 @@ export function viewportAt(entities, page, p) {
   );
 }
 export function entityScale(e, entities, scales) {
+  if (
+    e.type === "dim" &&
+    Number.isFinite(e.measurementScale) &&
+    e.measurementScale > 0
+  )
+    return e.measurementScale;
   const owner = entities.find(
     (v) => v.id === e.viewportId && v.type === "viewport" && v.page === e.page,
   );
@@ -35,6 +47,7 @@ export function transformChildren(
   });
   for (const e of state.entities.filter((e) => e.viewportId === id)) {
     e.points = e.points.map(point);
+    if (e.type === "dim" && e.measurementScale) e.measurementScale /= factor;
     if (e.textAnchor) e.textAnchor = point(e.textAnchor);
     if (e.type === "block") {
       e.blockWidth *= factor;

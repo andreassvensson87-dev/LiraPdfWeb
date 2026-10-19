@@ -7,13 +7,14 @@ import {
   decodePDFRawStream,
 } from "pdf-lib";
 import { exportPdf } from "./export.js";
-import { validateProject } from "./core.js";
+import { validateDocumentState } from "./model/document-validation.js";
+import { importAnnotations } from "./pdf/annotation-import.js";
+import { isStandardEntity, writeAnnotations } from "./pdf/annotation-writer.js";
+import { pruneUnusedObjects } from "./pdf/object-graph.js";
 import {
-  importAnnotations,
-  isStandardEntity,
-  writeAnnotations,
-  pruneUnusedObjects,
-} from "./pdf-annotations.js";
+  importPageMeasurements,
+  writePageMeasurements,
+} from "./pdf/measurement-format.js";
 
 const key = PDFName.of("LiraPDF");
 
@@ -26,7 +27,7 @@ export async function readEditablePdf(bytes) {
   if (doc.catalog.has(key)) {
     const data = doc.catalog.lookup(key, PDFDict);
     version = data.lookup(PDFName.of("Version"), PDFNumber).asNumber();
-    if (![1, 2, 3, 4, 5, 6, 7].includes(version))
+    if (![1, 2, 3, 4, 5, 6, 7, 8].includes(version))
       throw Error(
         "PDF:en innehåller redigeringsdata från en version av LiraPDF som inte stöds.",
       );
@@ -34,12 +35,7 @@ export async function readEditablePdf(bytes) {
       decodePDFRawStream(data.lookup(PDFName.of(name), PDFRawStream)).decode();
     sourceBytes = stream("Source");
     state = JSON.parse(new TextDecoder().decode(stream("State")));
-    validateProject({
-      ...state,
-      format: "lirapdf",
-      version: 1,
-      pdf: "embedded",
-    });
+    validateDocumentState(state);
     source = await PDFDocument.load(sourceBytes);
     if (
       source.getPageCount() !== doc.getPageCount() ||
@@ -52,7 +48,6 @@ export async function readEditablePdf(bytes) {
     source,
     version >= 2 ? state.entities : [],
   );
-  if (!version && !imported.entities.length) return null;
   // Standard annotations are authoritative, including external deletions.
   // Circles were flattened in v2 and arcs through v3; migrate their legacy state.
   const remaining =
@@ -60,6 +55,7 @@ export async function readEditablePdf(bytes) {
       ? state.entities.filter(
           (e) =>
             !isStandardEntity(e) ||
+            (version <= 7 && e.type === "dim") ||
             (version === 2 && e.type === "circle") ||
             (version <= 3 && e.type === "arc"),
         )
@@ -70,6 +66,23 @@ export async function readEditablePdf(bytes) {
     ids.add(entity.id);
   }
   state.entities = [...remaining, ...imported.entities];
+  const measurements = importPageMeasurements(doc, source, state, {
+    authoritative: version >= 8,
+  });
+  if (!version && !imported.entities.length && !measurements.found) return null;
+  // Native dimension scales remain valid when an external editor deletes a
+  // viewport or moves an annotation outside its previous viewport/page.
+  for (const entity of state.entities)
+    if (
+      entity.viewportId &&
+      !state.entities.some(
+        (v) =>
+          v.type === "viewport" &&
+          v.id === entity.viewportId &&
+          v.page === entity.page,
+      )
+    )
+      delete entity.viewportId;
   if (version >= 2) {
     state.rotations = {};
     for (let i = 0; i < doc.getPageCount(); i++) {
@@ -90,9 +103,15 @@ export async function readEditablePdf(bytes) {
         delete e.groupId;
       else groups.set(e.groupId, e.page);
     }
-  validateProject({ ...state, format: "lirapdf", version: 1, pdf: "embedded" });
-  if (imported.changed) pruneUnusedObjects(source);
-  return { bytes: imported.changed ? await source.save() : sourceBytes, state };
+  validateDocumentState(state);
+  if (imported.changed || measurements.changed) pruneUnusedObjects(source);
+  return {
+    bytes:
+      imported.changed || measurements.changed
+        ? await source.save()
+        : sourceBytes,
+    state,
+  };
 }
 
 export async function saveEditablePdf(bytes, state, pdf) {
@@ -103,16 +122,18 @@ export async function saveEditablePdf(bytes, state, pdf) {
     state.scales,
     pdf,
     state.rotations || {},
+    { measurements: false },
   );
   const doc = await PDFDocument.load(visible);
-  await writeAnnotations(doc, source, state.entities, pdf);
+  await writeAnnotations(doc, source, state.entities, pdf, state.scales);
+  await writePageMeasurements(doc, source, state, pdf);
   const original = doc.context.register(doc.context.flateStream(bytes));
   const editing = doc.context.register(
     doc.context.flateStream(new TextEncoder().encode(JSON.stringify(state))),
   );
   doc.catalog.set(
     key,
-    doc.context.obj({ Version: 7, Source: original, State: editing }),
+    doc.context.obj({ Version: 8, Source: original, State: editing }),
   );
   pruneUnusedObjects(doc);
   return doc.save();

@@ -1,4 +1,4 @@
-import { distance, box } from "./core.js";
+import { distance, box } from "./model/geometry.js";
 export const dist = distance,
   clone = structuredClone,
   uid = () => crypto.randomUUID();

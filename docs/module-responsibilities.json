@@ -1,0 +1,186 @@
+{
+  "layers": {
+    "model": {
+      "responsibility": "DOM-fri geometri, dokumentregler, urval och verktygsdefinitioner.",
+      "mayImport": ["model"],
+      "files": [
+        "src/advanced-editing.js",
+        "src/cad-geometry.js",
+        "src/command-input.js",
+        "src/core.js",
+        "src/curve-trim.js",
+        "src/document-layout.js",
+        "src/document-state.js",
+        "src/drawing-aids.js",
+        "src/editing.js",
+        "src/editor/tool-catalog.js",
+        "src/freehand.js",
+        "src/grips.js",
+        "src/groups.js",
+        "src/markup-tools.js",
+        "src/model/block-geometry.js",
+        "src/model/document-list.js",
+        "src/model/document-validation.js",
+        "src/model/drag-geometry.js",
+        "src/model/entity-primitives.js",
+        "src/model/entity-types.js",
+        "src/model/geometry.js",
+        "src/model/project-format.js",
+        "src/model/text-hit-testing.js",
+        "src/page-rotation.js",
+        "src/pdf-snapping.js",
+        "src/polyline-offset.js",
+        "src/selection.js",
+        "src/viewports.js"
+      ],
+      "domFree": true
+    },
+    "pdf": {
+      "responsibility": "Läsning, konvertering och export av PDF-innehåll; inga UI-controllerer.",
+      "mayImport": ["model", "pdf"],
+      "files": [
+        "src/blank-pdf.js",
+        "src/editable-pdf.js",
+        "src/export.js",
+        "src/pdf-annotations.js",
+        "src/pdf-block.js",
+        "src/pdf-created-markups.js",
+        "src/pdf-line-edit.js",
+        "src/pdf-markup.js",
+        "src/pdf-stamp.js",
+        "src/pdf-text-edit.js",
+        "src/pdf.js",
+        "src/pdf/annotation-coordinates.js",
+        "src/pdf/annotation-import.js",
+        "src/pdf/annotation-parser.js",
+        "src/pdf/annotation-values.js",
+        "src/pdf/annotation-writer.js",
+        "src/pdf/content-stream.js",
+        "src/pdf/demo-document.js",
+        "src/pdf/dimension-annotation.js",
+        "src/pdf/measurement-format.js",
+        "src/pdf/object-graph.js",
+        "src/pdf/viewer.js"
+      ]
+    },
+    "infrastructure": {
+      "responsibility": "Browserlagring, filåtkomst, filöppning och installerad apps livscykel.",
+      "mayImport": ["infrastructure"],
+      "files": [
+        "src/file-data.js",
+        "src/file-handling.js",
+        "src/infrastructure/indexeddb-repository.js",
+        "src/infrastructure/quick-tool-store.js",
+        "src/pdf-drop.js",
+        "src/pdf-file-save.js",
+        "src/storage.js"
+      ]
+    },
+    "editor": {
+      "responsibility": "Redigeringstransaktioner, egenskapsregler och interaktionsflöden. Får inte importera app eller UI.",
+      "mayImport": ["model", "pdf", "editor"],
+      "files": [
+        "src/editor/command-controller.js",
+        "src/editor/create-tool-controller.js",
+        "src/editor/document-editor.js",
+        "src/editor/document-selectors.js",
+        "src/editor/edit-tool-definitions.js",
+        "src/editor/page-actions.js",
+        "src/editor/pdf-content-actions.js",
+        "src/editor/property-actions.js",
+        "src/editor/selection-actions.js",
+        "src/editor/selection-controller.js",
+        "src/editor/tool-controller.js",
+        "src/editor/transform-controller.js"
+      ],
+      "domFree": true
+    },
+    "rendering": {
+      "responsibility": "PDF-canvas, ritöverlägg, sidlayout och visuell navigering.",
+      "mayImport": ["model", "pdf", "rendering"],
+      "files": [
+        "src/document-scroll.js",
+        "src/pdf-detail.js",
+        "src/rendering/annotation-renderer.js",
+        "src/rendering/overlay-renderer.js",
+        "src/rendering/page-renderer.js",
+        "src/rendering/pdf-viewport.js",
+        "src/rendering/viewport-navigation.js",
+        "src/scrollbars.js"
+      ]
+    },
+    "ui": {
+      "responsibility": "Menyer, inspektor, dialoger, egenskapsbindningar och visuellt tillstånd. Ändringar går via callbacks till editorn.",
+      "mayImport": ["model", "ui"],
+      "files": [
+        "src/block-library.js",
+        "src/canvas-text-editor.js",
+        "src/document-tabs.js",
+        "src/lira-shell.css",
+        "src/lira-shell.js",
+        "src/object-menu.js",
+        "src/quick-tools.js",
+        "src/style.css",
+        "src/ui/command-log.js",
+        "src/ui/command-prompt.js",
+        "src/ui/dialogs.js",
+        "src/ui/document-presentation.js",
+        "src/ui/feedback.js",
+        "src/ui/header.css",
+        "src/ui/icons.js",
+        "src/ui/inspector.css",
+        "src/ui/inspector.js",
+        "src/ui/overlays.css",
+        "src/ui/page-navigation.js",
+        "src/ui/property-bindings.js",
+        "src/ui/quick-tool-controller.js",
+        "src/ui/selection-menu.js",
+        "src/ui/style-controls.js",
+        "src/ui/toolbar.css",
+        "src/ui/toolbar.js",
+        "src/ui/workspace-bindings.js",
+        "src/ui/workspace-presenter.js",
+        "src/update-ui.js"
+      ]
+    },
+    "application": {
+      "responsibility": "Beroendekopplingar, dokumentlivscykel, filer, återställning, ordnat sparande och effekter efter redigering.",
+      "mayImport": [
+        "model",
+        "pdf",
+        "infrastructure",
+        "editor",
+        "rendering",
+        "ui",
+        "application",
+        "input"
+      ],
+      "files": [
+        "src/app/block-import-controller.js",
+        "src/app/document-controller.js",
+        "src/app/edit-controller.js",
+        "src/app/file-controller.js",
+        "src/app/launch-controller.js",
+        "src/app/library-controller.js",
+        "src/app/new-document-controller.js",
+        "src/app/page-controller.js",
+        "src/app/pdf-application.js",
+        "src/app/persistence-controller.js",
+        "src/app/stamp-controller.js",
+        "src/app/workspace-restoration.js",
+        "src/app/workspace-state.js",
+        "src/app.js",
+        "src/pwa.js"
+      ]
+    },
+    "input": {
+      "responsibility": "Pekare, tangentbord och koordinat-/snapadaptrar. Modelländringar går genom editorns actions.",
+      "mayImport": ["model", "pdf", "editor", "input"],
+      "files": [
+        "src/input/keyboard-bindings.js",
+        "src/input/pointer-controller.js",
+        "src/input/snap-controller.js"
+      ]
+    }
+  }
+}

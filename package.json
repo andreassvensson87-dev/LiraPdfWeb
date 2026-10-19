@@ -7,17 +7,21 @@
     "dev": "vite --host 127.0.0.1 --port 5178",
     "build": "node scripts/prepare-pdf-assets.mjs && vite build && node scripts/build-pwa.js",
     "test": "node --test tests/*.test.js",
-    "check": "node --check src/app.js && node --test tests/*.test.js && node scripts/prepare-pdf-assets.mjs && vite build && node scripts/build-pwa.js",
+    "test:tools": "node scripts/test-tools-browser.mjs",
+    "check": "node scripts/check-source.mjs && node --test tests/*.test.js && node scripts/prepare-pdf-assets.mjs && vite build && node scripts/build-pwa.js",
     "format": "prettier --write src tests index.html",
     "format:check": "prettier --check src tests index.html",
-    "predev": "node scripts/prepare-pdf-assets.mjs"
+    "predev": "node scripts/prepare-pdf-assets.mjs",
+    "check:architecture": "node scripts/check-source.mjs"
   },
   "dependencies": {
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "5.7.284"
   },
   "devDependencies": {
+    "playwright": "1.62.1",
     "prettier": "^3.9.9",
+    "rollup": "4.63.5",
     "vite": "^7.1.0"
   }
 }

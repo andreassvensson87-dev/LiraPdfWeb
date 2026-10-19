@@ -1,0 +1,22 @@
+// Number of control points in persisted objects; negative means a path.
+export const entityPointCounts = {
+  polyline: -1,
+  freehand: -1,
+  highlight: -1,
+  cloud: 2,
+  stamp: 2,
+  viewport: 2,
+  pdfMarkup: 2,
+  pdfErase: 2,
+  block: 1,
+  line: 2,
+  rect: 2,
+  circle: 2,
+  ellipse: 2,
+  arc: 3,
+  leader: 3,
+  text: 1,
+  replace: 2,
+  mask: 2,
+  dim: 3,
+};

@@ -7,7 +7,7 @@ import {
   PDFName,
 } from "pdf-lib";
 import { applyLineRemovals } from "./pdf-line-edit.js";
-import { blockCorners } from "./pdf-block.js";
+import { blockCorners } from "./model/block-geometry.js";
 import { entityScale, viewportCaption } from "./viewports.js";
 import {
   originalMarkup,
@@ -15,14 +15,22 @@ import {
   drawMarkupAppearance,
 } from "./pdf-markup.js";
 import { createToolAnnotation } from "./pdf-created-markups.js";
-import { primitives } from "./core.js";
+import { primitives } from "./model/entity-primitives.js";
+import { writePageMeasurements } from "./pdf/measurement-format.js";
 const parseColor = (c) =>
   rgb(
     parseInt(c.slice(1, 3), 16) / 255,
     parseInt(c.slice(3, 5), 16) / 255,
     parseInt(c.slice(5, 7), 16) / 255,
   );
-export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
+export async function exportPdf(
+  bytes,
+  entities,
+  scales,
+  pdf,
+  rotations = {},
+  { measurements = true } = {},
+) {
   const doc = await PDFDocument.load(await applyLineRemovals(bytes, entities)),
     font = await doc.embedFont(StandardFonts.Helvetica);
   const blocks = new Map();
@@ -204,5 +212,7 @@ export async function exportPdf(bytes, entities, scales, pdf, rotations = {}) {
       await finish();
     }
   }
+  if (measurements)
+    await writePageMeasurements(doc, doc, { entities, scales }, pdf);
   return doc.save();
 }

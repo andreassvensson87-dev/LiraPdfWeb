@@ -1,5 +1,6 @@
-import { box, primitives } from "./core.js";
-import { blockCorners } from "./pdf-block.js";
+import { box } from "./model/geometry.js";
+import { primitives } from "./model/entity-primitives.js";
+import { blockCorners } from "./model/block-geometry.js";
 const inside = (p, r) =>
   p.x >= r.x - 1e-8 &&
   p.x <= r.x + r.w + 1e-8 &&

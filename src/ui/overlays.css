@@ -1,0 +1,165 @@
+/* Shared visual dimensions for the Lira family. */
+.quick-tools {
+  position: absolute;
+  z-index: 12;
+  left: 16px;
+  width: 70px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 5px;
+  background: #ffffffed;
+  border: 1px solid #d5dfe1;
+  border-radius: 12px;
+  box-shadow: 0 3px 14px #172b3208;
+  backdrop-filter: blur(8px);
+}
+.quick-tools button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  min-height: 42px;
+  flex-shrink: 0;
+  padding: 8px 3px;
+  margin: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+.quick-tools button:hover {
+  background: #edf3f3;
+}
+.quick-tools button[aria-pressed="true"] {
+  background: #e5eeea;
+}
+.quick-tools button:focus-visible {
+  outline: 2px solid #759a88;
+  outline-offset: -2px;
+}
+.quick-tools svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.quick-tools .quick-manage {
+  color: #647a83;
+  min-height: 34px;
+}
+.quick-tools-dialog {
+  width: min(440px, calc(100vw - 40px));
+  max-height: 80vh;
+  overflow: auto;
+}
+.quick-tools-dialog form {
+  display: grid;
+  gap: 12px;
+}
+.quick-tools-dialog h2,
+.quick-tools-dialog p {
+  margin: 0;
+}
+.quick-tools-dialog label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.quick-tools-dialog label[hidden] {
+  display: none;
+}
+.quick-tools-dialog input:not([type="color"]),
+.quick-tools-dialog select {
+  min-width: 0;
+  flex: 1;
+}
+.quick-tools-saved {
+  display: grid;
+  gap: 6px;
+}
+.quick-tools-saved > div,
+.quick-tools-actions {
+  display: flex;
+  gap: 6px;
+}
+.quick-tools-saved > div > button:first-child {
+  flex: 1;
+  text-align: left;
+}
+
+.object-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 200px;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
+  background: #fff;
+  border: 1px solid #d5dfe1;
+  border-radius: 9px;
+  box-shadow: 0 5px 20px #172b3226;
+}
+.object-menu[hidden] {
+  display: none;
+}
+.object-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  border-radius: 5px;
+  box-shadow: none;
+  font-size: 12px;
+}
+.object-menu button:hover:not(:disabled),
+.object-menu button:focus-visible {
+  background: #edf3f3;
+}
+.object-menu button:disabled {
+  opacity: 0.4;
+}
+
+.canvas-text-editor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  transform-origin: 0 0;
+  padding: 3px 4px;
+  margin: 0;
+  resize: none;
+  overflow: hidden;
+  border: 1px solid #147b60;
+  border-radius: 2px;
+  outline: none;
+  background: #ffffffeb;
+  font-family: Helvetica, Arial, sans-serif;
+  line-height: 1.25;
+  box-sizing: border-box;
+  box-shadow: 0 0 0 2px #147b6022;
+}
+.pdf-drop-active::after {
+  content: "Släpp PDF här för att öppna i en ny flik";
+  position: fixed;
+  inset: 12px;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  border: 3px dashed #167c60;
+  border-radius: 14px;
+  background: rgb(232 249 242 / 85%);
+  color: #145d49;
+  font:
+    600 20px Helvetica,
+    Arial,
+    sans-serif;
+}

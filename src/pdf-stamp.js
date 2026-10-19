@@ -6,7 +6,8 @@ import {
   PDFArray,
   PDFHexString,
 } from "pdf-lib";
-import { blockPage, blockCorners } from "./pdf-block.js";
+import { blockCorners } from "./model/block-geometry.js";
+import { blockPage } from "./pdf-block.js";
 import { drawMarkupAppearance } from "./pdf-markup.js";
 import { appearanceHash } from "./markup-tools.js";
 const k = PDFName.of;

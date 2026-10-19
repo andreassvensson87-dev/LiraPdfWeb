@@ -1,6 +1,6 @@
 # LiraPDF Web
 
-Första tekniska versionen av en PDF-ritningseditor med LiraCAD-inspirerad arbetsyta. Lokal bearbetning med PDF.js, egen geometri och pdf-lib för export. Ingen serverdatabas eller uppladdning av ritningar.
+Första tekniska versionen av en PDF-ritningseditor med en ljus arbetsyta enligt LiraCAD och LiraStructure. Lokal bearbetning med PDF.js, egen geometri och pdf-lib för export. Ingen serverdatabas eller uppladdning av ritningar.
 
 ## Starta
 
@@ -18,6 +18,10 @@ Webbappen registrerar `.pdf` med File Handling API när den installeras via Micr
 4. Dubbelklicka på en PDF i Utforskaren för att öppna den i LiraPDF.
 
 En vanlig webbläsarflik registreras inte som standardprogram. En befintlig installation kan behöva uppdateras eller installeras om för att få den nya filkopplingen. Den publicerade versionen kan användas offline efter att appens resurser har sparats. Om du installerar från localhost måste den lokala servern vara tillgänglig tills resurserna har sparats för offlinebruk. Webbläsare utan File Handling API använder fortsatt **Arkiv → Öppna PDF**. Windows väljer standardprogrammet först när du själv anger det i systeminställningarna. Dokument och snabbverktyg från en annan webbläsare eller webbadress överförs via sparade PDF-filer respektive ställs in på nytt.
+
+## Öppna genom att dra in PDF
+
+Dra en eller flera PDF-filer från Utforskaren eller Finder och släpp var som helst i appen. Varje PDF öppnas i en ny flik. En markering visar var du kan släppa. Om ett kommando eller en dialog pågår väntar öppningen tills det avslutats. När webbläsaren lämnar ett filhandtag behålls det för att kunna spara tillbaka till samma fil; annars används appens vanliga sparflöde.
 
 ## Genomskinlighet
 
@@ -92,7 +96,7 @@ Verklig redigering av originaltext är ännu inte implementerad. Nästa tekniska
 
 - **Spara PDF / Ctrl+S** sparar till den öppnade PDF-filen när appen har tillgång till dess filreferens. Annars väljer du plats vid första sparandet. Webbläsaren kan be om skrivrättighet.
 - **Spara som PDF… / Ctrl+Shift+S** väljer en annan fil och använder därefter den för Ctrl+S.
-- Den sparade PDF:en visar markeringarna i vanliga PDF-läsare och innehåller originalet samt Liras redigeringsdata. Öppna den i LiraPDF för att fortsätta ändra objekt, grupper, skala och sidrotation. Originalet som bäddas in kan göra filen större. Linjer, polylinjer, polygoner, cirklar, ellipser, rektanglar och frihandsstreck med en sammanhängande bana sparas som standardiserade PDF-annoteringar och kan redigeras i program som stöder respektive objekttyp. Övriga Lira-objekt använder fortfarande Liras redigeringsdata.
+- Den sparade PDF:en visar markeringarna i vanliga PDF-läsare och innehåller originalet samt Liras redigeringsdata. Öppna den i LiraPDF för att fortsätta ändra objekt, grupper, skala och sidrotation. Originalet som bäddas in kan göra filen större. Linjer, polylinjer, polygoner, cirklar, ellipser, rektanglar, mått och frihandsstreck med en sammanhängande bana sparas som standardiserade PDF-annoteringar och kan redigeras i program som stöder respektive objekttyp. Övriga Lira-objekt använder fortfarande Liras redigeringsdata.
 - **Öppna projekt** importerar fortfarande äldre `.lirapdf`-filer. Därefter sparar du dem som PDF.
 - **Exportera visningskopia** skapar en visningskopia med inbakade markeringar utan Liras redigeringsdata. Använd **Spara PDF** för fortsatt redigering.
 - Webbläsare utan filåtkomst laddar ned PDF:en vid sparande. Direkt överskrivning kräver stöd för File System Access API.
@@ -258,3 +262,55 @@ Första versionen stöder fristående textsträngar med standardkodning (WinAnsi
 Markera flera objekt och välj **Högerklick → Gruppera**. Klick på en medlem väljer hela gruppen, och ett drag flyttar medlemmarna tillsammans. Shift-klick och markeringsrutor väljer också hela grupper. **Ctrl/⌘-klick** eller **Högerklick → Välj enskilt objekt** väljer en medlem för individuell flytt eller ändring av färg, bredd och genomskinlighet. Medlemskapet finns kvar efter ändringen. Välj **Högerklick → Lös upp grupp** för att återgå till separata objekt.
 
 Grupper sparas i projekt och autosparande och stöder ångra/gör om. Kopierade grupper får ett eget medlemskap. Grupper gäller tillagda objekt på samma sida; PDF-underlagets originalgrafik hämtas först med Hämta linje. Om befintliga grupper grupperas ihop bildas en gemensam grupp, utan undergrupper.
+
+## Lira standard: meny, inspektor och modulansvar
+
+Arbetsytan använder en ljus topprad, horisontella flikar för **Rita**, **Ändra**,
+**Mät**, **PDF** och **Visa**, samt grupperade verktyg. **Visa** innehåller
+zoomning, anpassning och dokumentradens synlighet. Verktyg kan också startas med
+befintliga kortkommandon och kommandoraden.
+
+Högerinspektorns ikonlist växlar mellan **Egenskaper** och **Sidor**.
+Egenskaper grupperas i hopfällbara avsnitt efter aktivt verktyg eller markerat
+objekt. Sidpanelen navigerar bland PDF-dokumentets sidor. Inspektorn kan fällas
+in till ikonlisten. Panelbyte behåller markeringen; nya ritverktyg visar sina
+egenskaper. Verktygens förval hålls åtskilda från markerade objekts värden.
+
+Arkitektur, ägarskap och kontrollkommandon finns i [docs/architecture.md](docs/architecture.md).
+Filgenomgången med ansvar per modul finns i [docs/architecture-review.md](docs/architecture-review.md).
+Samtliga källmoduler finns i [modulinventeringen](docs/module-responsibilities.json).
+`pnpm check` kontrollerar alla källmoduler, lagergränser, DOM-/lagringsberoenden
+och cirkulära importer, utöver beteendetester och produktionsbygge.
+
+## Kontrollera verktygen i webbläsaren
+
+Kör `pnpm exec playwright install chromium` en gång för testwebbläsaren.
+Starta appen med `pnpm dev` och kör sedan `pnpm test:tools` i en annan terminal.
+Kontrollen använder isolerade browsersessioner och verifierar faktiska
+verktygsåtgärder, sparat innehåll och ångra/gör om. Den ändrar inte dokumenten
+i din vanliga webbläsare. Felbilder och `results.json` sparas i systemets
+temporära katalog `lirapdf-tools`.
+
+`TOOL_FILTER='pdf/' pnpm test:tools` kör en delmängd.
+`LIRAPDF_URL` kan ange en annan lokal utvecklings-/förhandsvisningsserver;
+`TOOL_ARTIFACTS` anger katalog för testresultat.
+Utförd kontroll och rättningar beskrivs i [verktygsgenomgången](docs/tool-verification.md).
+
+## Mått och skalor vid PDF-utbyte
+
+**Spara PDF** skriver längdmått som Line-annoteringar med LineDimension-intention,
+måttpunkter, förlängningslinjer, synligt utseende och en mätdictionary med enhet
+och skala. Sidkalibrering och mätområden skrivs som vanliga PDF-viewports med
+Measure-data; även en visningskopia behåller dessa skalor. Informationen kan
+läsas utan Liras privata katalog. Mått behåller sin egen kalibrering när en annan
+skala väljs för nya mätningar. Befintliga v7-filer migreras vid nästa sparande.
+
+Rundresetester täcker ändrade/raderade annoteringar och skalor, flera sidor,
+beskärning, rotation och UserUnit. Specialutseenden och skalor med olika X/Y
+bevaras i PDF:en när de inte kan representeras av Liras modell. Text och leader
+samt övriga objekt som saknar standardannoteringsstöd behåller sitt synliga
+utseende och Liras privata redigeringsdata.
+
+Själva Revu-programmet har inte kunnat köras på utvecklingsdatorn. Verifierat
+format, tester och en konkret Revu-kontroll beskrivs i
+[PDF-utbyteskontrollen](docs/pdf-interoperability.md).

@@ -1,5 +1,5 @@
 import { toCad } from "./cad-geometry.js";
-import { distance } from "./core.js";
+import { distance } from "./model/geometry.js";
 
 // Geometry is copied so pointer previews and cancelled edits never alter the source.
 export function moveGrip(source, index, point) {

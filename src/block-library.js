@@ -1,5 +1,11 @@
-import { readBlockLibrary, writeBlockLibrary } from "./storage.js";
-export function blockLibrary({ place, canPlace, rename, error }) {
+export function blockLibrary({
+  place,
+  canPlace,
+  rename,
+  error,
+  readBlocks,
+  writeBlocks,
+}) {
   const $ = (id) => document.getElementById(id),
     dialog = $("blockLibrary");
   let blocks = [],
@@ -49,7 +55,7 @@ export function blockLibrary({ place, canPlace, rename, error }) {
           const next = blocks.map((x) =>
             x.libraryId === b.libraryId ? { ...x, blockName: name.trim() } : x,
           );
-          await writeBlockLibrary(next);
+          await writeBlocks(next);
           blocks = next;
           render();
         } catch (e) {
@@ -82,7 +88,7 @@ export function blockLibrary({ place, canPlace, rename, error }) {
       if (working) return;
       try {
         working = true;
-        blocks = await readBlockLibrary();
+        blocks = await readBlocks();
         $("blockSearch").value = "";
         render();
         if (!dialog.open) dialog.showModal();
@@ -98,9 +104,9 @@ export function blockLibrary({ place, canPlace, rename, error }) {
       working = true;
       try {
         const { id, page, points, libraryId, ...asset } = block;
-        const latest = await readBlockLibrary();
+        const latest = await readBlocks();
         const next = [...latest, { ...asset, libraryId: crypto.randomUUID() }];
-        await writeBlockLibrary(next);
+        await writeBlocks(next);
         blocks = next;
         $("blockSearch").value = "";
         render();

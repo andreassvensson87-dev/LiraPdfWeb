@@ -1,0 +1,103 @@
+body[data-lira-app="pdf"] .tool-tabs {
+  position: static;
+  height: 38px;
+  min-height: 38px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  gap: 0;
+  background: var(--ui-panel);
+  border-bottom: 1px solid var(--ui-border);
+}
+body[data-lira-app="pdf"] .tool-tabs button {
+  height: 38px;
+  background: transparent;
+  padding: 0 17px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+body[data-lira-app="pdf"] .tool-tabs button[aria-selected="true"] {
+  color: var(--ui-ink);
+  background: transparent;
+  border-bottom-color: var(--ui-accent);
+  font-weight: 600;
+}
+body[data-lira-app="pdf"] .ribbon {
+  position: static;
+  height: 112px;
+  min-height: 112px;
+  padding: 5px 8px 0;
+  gap: 0;
+  background: var(--ui-panel);
+  border-bottom: 1px solid var(--ui-border);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+body[data-lira-app="pdf"] #tools {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0;
+  min-width: max-content;
+  align-self: stretch;
+}
+body[data-lira-app="pdf"] .toolbar-section {
+  display: grid;
+  grid-template-rows: repeat(2, 34px) 22px;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  gap: 2px 4px;
+  align-content: center;
+  padding: 0 12px;
+  border-right: 1px solid var(--ui-border);
+}
+body[data-lira-app="pdf"] .toolbar-section h2 {
+  grid-row: 3;
+  grid-column: 1 / -1;
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--ui-muted);
+}
+body[data-lira-app="pdf"] .toolbar-section .ribbon-command {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  height: 34px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--ui-ink);
+  background: transparent;
+}
+body[data-lira-app="pdf"] .toolbar-section .ribbon-command:hover {
+  background: #e2ecea;
+}
+body[data-lira-app="pdf"] .toolbar-section .ribbon-command.active {
+  background: #e6f0eb;
+  color: #246c54;
+}
+body[data-lira-app="pdf"] .toolbar-section .ribbon-large {
+  grid-row: 1 / 3;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-width: 72px;
+  height: 70px;
+}
+body[data-lira-app="pdf"] .ribbon-large svg {
+  width: 27px;
+  height: 27px;
+}
+body[data-lira-app="pdf"] .toolbar-section #zoom {
+  align-self: center;
+  min-width: 40px;
+  text-align: center;
+}
