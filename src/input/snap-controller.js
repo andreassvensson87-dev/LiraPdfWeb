@@ -104,7 +104,7 @@ export function createSnapController({
             .map((p) => ({ a: p.a, b: p.b })),
         );
       const ownHit = nearestSnap(raw, ownSegments, best);
-      if (ownHit) {
+      if (ownHit && (!interaction.snapHit || ownHit.kind !== "Linje")) {
         p = ownHit.point;
         interaction.snapHit = ownHit;
       }
@@ -173,7 +173,16 @@ export function createSnapController({
             ? polarPoint(origin, rawPointer, interaction.polarAngle)
             : null;
         if (polarHit) {
-          p = polarHit.point;
+          const tracked =
+            interaction.otrack && interaction.snap
+              ? trackingPoint(
+                  rawPointer,
+                  interaction.trackingAnchors,
+                  8 / workspace.zoom,
+                  polarHit,
+                )
+              : null;
+          p = tracked ? tracked.point : polarHit.point;
           interaction.aidGuides = [
             {
               a: origin,
@@ -183,6 +192,7 @@ export function createSnapController({
               },
               polar: true,
             },
+            ...(tracked?.guides || []),
           ];
         } else if (interaction.otrack && interaction.snap) {
           const tracked = trackingPoint(

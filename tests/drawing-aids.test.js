@@ -65,6 +65,58 @@ test("OTRACK intersects horizontal and vertical guides and releases outside tole
   assert.equal(trackingPoint({ x: 60, y: 120 }, anchors, 8), null);
   assert.equal(trackingPoint({ x: 33, y: 196 }, anchors, 2), null);
 });
+test("polar and tracking intersect exactly in every quadrant", () => {
+  const origin = { x: 150, y: 250 };
+  for (const sx of [-1, 1])
+    for (const sy of [-1, 1])
+      for (const axis of ["x", "y"]) {
+        const target = { x: origin.x + sx * 100, y: origin.y + sy * 100 };
+        const pointer = { x: target.x + 3, y: target.y + 1 };
+        const anchor =
+          axis === "x"
+            ? { x: target.x, y: origin.y - 40 }
+            : { x: origin.x + 40, y: target.y };
+        const polar = polarPoint(origin, pointer);
+        const hit = trackingPoint(pointer, [anchor], 8, polar);
+        assert.ok(hit);
+        assert.ok(distance(hit.point, target) < 1e-8);
+        assert.deepEqual(hit.guides[0].a, anchor);
+        assert.deepEqual(hit.guides[0].b, hit.point);
+      }
+});
+test("combined tracking chooses nearby intersections and rejects parallel, distant and backwards rays", () => {
+  const polar = { origin: { x: 0, y: 0 }, angle: Math.PI / 4 };
+  assert.equal(
+    trackingPoint({ x: 100, y: 100 }, [{ x: 130, y: 150 }], 8, polar),
+    null,
+  );
+  assert.equal(
+    trackingPoint({ x: -100, y: -100 }, [{ x: -100, y: -200 }], 8, polar),
+    null,
+  );
+  for (const angle of [0, Math.PI / 2])
+    assert.equal(
+      trackingPoint({ x: 100, y: 100 }, [{ x: 100, y: 100 }], 8, {
+        origin: polar.origin,
+        angle,
+      }),
+      null,
+    );
+  const hit = trackingPoint(
+    { x: 102, y: 100 },
+    [
+      { x: 105, y: 180 },
+      { x: 100, y: 180 },
+    ],
+    8,
+    polar,
+  );
+  assert.ok(distance(hit.point, { x: 100, y: 100 }) < 1e-8);
+  assert.equal(
+    trackingPoint({ x: 102, y: 100 }, [{ x: 100, y: 180 }], 1, polar),
+    null,
+  );
+});
 test("snap symbols distinguish endpoint, midpoint, edge and other object points", () => {
   assert.equal(
     new Set(

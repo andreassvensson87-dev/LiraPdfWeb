@@ -921,6 +921,32 @@ await scenario("input/object-tracking", [line()], async (t) => {
   await t.page.keyboard.press("Escape");
   await t.undoRedo();
 });
+for (const [axis, anchor, pointer, target] of [
+  ["vertical", [250, 210], [253, 351], [250, 350]],
+  ["horizontal", [330, 350], [247, 352], [250, 350]],
+])
+  await scenario(
+    `input/polar-tracking-${axis}`,
+    [line("anchor", [anchor, [anchor[0] + 40, anchor[1]]])],
+    async (t) => {
+      for (const id of ["snap", "polar", "otrack"])
+        await t.page.locator(`#${id}`).click();
+      await t.activate("line");
+      await t.click(150, 250);
+      const acquired = await t.screen(...anchor);
+      await t.page.mouse.move(acquired.x, acquired.y);
+      await delay(550);
+      await t.click(...pointer);
+      const s = await t.expectState((s) => s?.entities.length === 2);
+      const end = s.entities[1].points[1];
+      assert.ok(
+        Math.hypot(end.x - target[0], end.y - target[1]) < 0.01,
+        `Expected polar/track intersection ${target}, got ${end.x},${end.y}`,
+      );
+      await t.page.keyboard.press("Escape");
+      await t.undoRedo();
+    },
+  );
 await scenario("input/escape-cancels-unfinished-tools", [], async (t) => {
   for (const tool of [
     "line",

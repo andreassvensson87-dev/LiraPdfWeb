@@ -23,7 +23,30 @@ export function polarPoint(
     angle: nearest,
   };
 }
-export function trackingPoint(point, anchors, tolerance) {
+export function trackingPoint(point, anchors, tolerance, polar = null) {
+  if (polar) {
+    const direction = { x: Math.cos(polar.angle), y: Math.sin(polar.angle) };
+    let best = null;
+    // Intersect the polar ray with each horizontal/vertical tracking line.
+    // Snapping the projected point's coordinates would lose the polar angle.
+    for (const anchor of anchors) {
+      for (const axis of ["x", "y"]) {
+        if (Math.abs(direction[axis]) < 1e-8) continue;
+        const length = (anchor[axis] - polar.origin[axis]) / direction[axis];
+        if (length < 0) continue;
+        const p = {
+          x: polar.origin.x + length * direction.x,
+          y: polar.origin.y + length * direction.y,
+        };
+        const distance = Math.hypot(p.x - point.x, p.y - point.y);
+        if (distance >= tolerance) continue;
+        if (!best || distance < best.distance) {
+          best = { point: p, guides: [{ a: anchor, b: p }], distance };
+        }
+      }
+    }
+    return best ? { point: best.point, guides: best.guides } : null;
+  }
   let x = null,
     y = null,
     dx = tolerance,
